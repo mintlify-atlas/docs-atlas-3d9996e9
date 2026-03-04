@@ -1,0 +1,199 @@
+---
+title: 'Azure Services Setup'
+description: 'Configure Azure OpenAI and Azure AI Search for the Real Madrid RAG application'
+---
+
+## Overview
+
+The Real Madrid RAG project requires two Azure services to function:
+
+1. **Azure OpenAI** - For chat completions and text embeddings
+2. **Azure AI Search** - For vector search and document retrieval
+
+This guide walks you through setting up these services in your Azure subscription.
+
+## Prerequisites
+
+- An active Azure subscription
+- Azure CLI installed and authenticated
+- Permissions to create Azure resources
+
+## Azure OpenAI Setup
+
+<Steps>
+  <Step title="Create Azure OpenAI Resource">
+    Navigate to the Azure Portal and create a new Azure OpenAI resource:
+    
+    ```bash
+    az cognitiveservices account create \
+      --name <your-openai-name> \
+      --resource-group <your-rg> \
+      --kind OpenAI \
+      --sku S0 \
+      --location eastus
+    ```
+    
+    <Note>
+      Azure OpenAI availability varies by region. Check the [Azure OpenAI Service regions](https://learn.microsoft.com/azure/ai-services/openai/concepts/models#model-summary-table-and-region-availability) for the latest information.
+    </Note>
+  </Step>
+
+  <Step title="Deploy Chat Model">
+    Deploy a GPT model for chat completions. The application is configured to use a deployment named `chat`:
+    
+    ```bash
+    az cognitiveservices account deployment create \
+      --name <your-openai-name> \
+      --resource-group <your-rg> \
+      --deployment-name chat \
+      --model-name gpt-4 \
+      --model-version "0613" \
+      --model-format OpenAI \
+      --sku-capacity 10 \
+      --sku-name "Standard"
+    ```
+    
+    <Note>
+      You can use GPT-3.5-Turbo or GPT-4 depending on your requirements and availability.
+    </Note>
+  </Step>
+
+  <Step title="Deploy Embedding Model">
+    Deploy an embedding model for vector generation. The application is configured to use a deployment named `embedding`:
+    
+    ```bash
+    az cognitiveservices account deployment create \
+      --name <your-openai-name> \
+      --resource-group <your-rg> \
+      --deployment-name embedding \
+      --model-name text-embedding-ada-002 \
+      --model-version "2" \
+      --model-format OpenAI \
+      --sku-capacity 10 \
+      --sku-name "Standard"
+    ```
+  </Step>
+
+  <Step title="Get API Credentials">
+    Retrieve your endpoint and API key:
+    
+    ```bash
+    # Get endpoint
+    az cognitiveservices account show \
+      --name <your-openai-name> \
+      --resource-group <your-rg> \
+      --query properties.endpoint \
+      --output tsv
+    
+    # Get API key
+    az cognitiveservices account keys list \
+      --name <your-openai-name> \
+      --resource-group <your-rg> \
+      --query key1 \
+      --output tsv
+    ```
+    
+    Save these values for configuration.
+  </Step>
+</Steps>
+
+## Azure AI Search Setup
+
+<Steps>
+  <Step title="Create Azure AI Search Service">
+    Create a new Azure AI Search resource:
+    
+    ```bash
+    az search service create \
+      --name <your-search-name> \
+      --resource-group <your-rg> \
+      --sku basic \
+      --location eastus
+    ```
+    
+    <Warning>
+      The Basic tier is the minimum required for vector search capabilities. The Free tier does not support vector search.
+    </Warning>
+  </Step>
+
+  <Step title="Get API Credentials">
+    Retrieve your search endpoint and admin API key:
+    
+    ```bash
+    # Get endpoint
+    az search service show \
+      --name <your-search-name> \
+      --resource-group <your-rg> \
+      --query "https://$(az search service show --name <your-search-name> --resource-group <your-rg> --query name -o tsv).search.windows.net" \
+      --output tsv
+    
+    # Get admin key
+    az search admin-key show \
+      --service-name <your-search-name> \
+      --resource-group <your-rg> \
+      --query primaryKey \
+      --output tsv
+    ```
+    
+    Save these values for configuration.
+  </Step>
+
+  <Step title="Create Search Index">
+    The application uses an index named `rm-rag-index` by default. The index is created automatically when you run the indexing process.
+    
+    <Note>
+      The index name can be customized in your configuration. See the [Environment Configuration](/configuration/environment) page for details.
+    </Note>
+  </Step>
+</Steps>
+
+## Verify Setup
+
+After setting up both services, verify your configuration:
+
+<Steps>
+  <Step title="Test Azure OpenAI">
+    Test your OpenAI deployment using the Azure Portal's "Chat playground" or by making a test API call.
+  </Step>
+
+  <Step title="Test Azure AI Search">
+    Verify your search service is accessible:
+    
+    ```bash
+    curl -X GET "https://<your-search-name>.search.windows.net/indexes?api-version=2023-11-01" \
+      -H "api-key: <your-api-key>"
+    ```
+  </Step>
+</Steps>
+
+## Next Steps
+
+Once your Azure services are configured:
+
+1. Configure your environment variables - See [Environment Configuration](/configuration/environment)
+2. Index your Real Madrid documents - See [Quickstart](/quickstart)
+3. Run the RAG console application
+
+## Troubleshooting
+
+### Quota Issues
+
+If you encounter quota limitations:
+
+- Azure OpenAI has regional quotas for model deployments
+- Request quota increases through the Azure Portal
+- Consider using different regions for your resources
+
+### Network Access
+
+<Warning>
+If your Azure resources are behind a firewall or VNET, ensure your application can access:
+- `*.openai.azure.com`
+- `*.search.windows.net`
+</Warning>
+
+### API Version Compatibility
+
+The application uses Azure OpenAI API version `2024-10-21` by default. If you encounter compatibility issues, you can override this in your configuration.
+
+See [AzureOptions.cs:58](/home/daytona/workspace/source/src/RagConsole/Config/AzureOptions.cs:58) for the default API version setting.

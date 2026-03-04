@@ -1,0 +1,179 @@
+---
+title: Console CLI
+description: Interactive command-line interface for the Real Madrid RAG system
+---
+
+The RagConsole is an interactive command-line application that allows you to ask questions about Real Madrid and receive AI-generated answers based on retrieved documents from Azure AI Search.
+
+## Overview
+
+The Console CLI provides a simple REPL (Read-Eval-Print Loop) interface for testing and interacting with the RAG system. It validates your configuration on startup, initializes all required services, and then enters an interactive loop where you can ask questions.
+
+<Note>
+The console is primarily designed for development and testing. For production use cases, consider integrating the RAG services directly into your application.
+</Note>
+
+## Running the console
+
+Navigate to the RagConsole directory and run:
+
+```bash
+cd src/RagConsole
+dotnet run
+```
+
+On successful startup, you'll see:
+
+```
+RAG Console lista. Escribe tu pregunta (ENTER vacío para salir):
+```
+
+## How it works
+
+### Startup process
+
+The console performs several steps during initialization:
+
+<Steps>
+  <Step title="Load configuration">
+    Loads settings from `appsettings.json` and environment variables
+    
+    ```csharp Program.cs
+    var options = AzureOptionsLoader.Load();
+    var validationErrors = options.Validate();
+    ```
+  </Step>
+  
+  <Step title="Validate settings">
+    Validates that all required Azure credentials and endpoints are configured
+    
+    If validation fails, you'll see an error message listing missing configuration:
+    ```
+    Configuración incompleta. Revisa appsettings.json o variables de entorno:
+    - AZURE_OPENAI_ENDPOINT is required
+    - AZURE_SEARCH_API_KEY is required
+    ```
+  </Step>
+  
+  <Step title="Initialize services">
+    Creates instances of the search service, OpenAI service, and orchestrator
+    
+    ```csharp Program.cs
+    using var httpClient = new HttpClient();
+    var searchService = new AzureSearchService(options);
+    var openAiService = new AzureOpenAiService(httpClient, options);
+    var orchestrator = new RagOrchestrator(searchService, openAiService);
+    ```
+  </Step>
+</Steps>
+
+### Interactive loop
+
+Once initialized, the console enters an interactive loop:
+
+```csharp Program.cs
+while (true)
+{
+    Console.Write("\nPregunta: ");
+    var question = Console.ReadLine();
+    
+    if (string.IsNullOrWhiteSpace(question))
+    {
+        break;
+    }
+    
+    try
+    {
+        var response = await orchestrator.AskAsync(question);
+        Console.WriteLine("\nRespuesta:");
+        Console.WriteLine(response.Answer);
+        
+        if (response.Sources.Count > 0)
+        {
+            Console.WriteLine("\nFuentes recuperadas:");
+            foreach (var source in response.Sources)
+            {
+                Console.WriteLine($"- [{source.Source}] score={source.Score:0.000}");
+            }
+        }
+    }
+    catch (Exception exception)
+    {
+        Console.WriteLine($"Error ejecutando RAG: {exception.Message}");
+    }
+}
+```
+
+## Usage example
+
+Here's a typical interaction with the console:
+
+```
+RAG Console lista. Escribe tu pregunta (ENTER vacío para salir):
+
+Pregunta: Who is the top scorer in Real Madrid history?
+
+Respuesta:
+Cristiano Ronaldo is the top scorer in Real Madrid history with 451 goals in 438 appearances between 2009 and 2018.
+
+Fuentes recuperadas:
+- [real-madrid-history.pdf] score=0.892
+- [player-statistics.pdf] score=0.845
+- [champions-league-records.pdf] score=0.783
+
+Pregunta: 
+```
+
+Press **Enter** without typing a question to exit the console.
+
+## Response format
+
+For each question, the console displays:
+
+1. **Answer**: The AI-generated response based on retrieved context
+2. **Sources**: List of documents retrieved from Azure AI Search with relevance scores
+
+The relevance scores range from 0 to 1, where higher scores indicate better matches to your question.
+
+## Error handling
+
+The console handles errors gracefully:
+
+- **Configuration errors**: Displayed on startup with specific missing fields
+- **Runtime errors**: Caught and displayed as error messages without crashing the console
+- **Network errors**: Shown if Azure services are unreachable
+
+<Warning>
+Make sure your Azure resources are properly provisioned and accessible before running the console.
+</Warning>
+
+## Exit behavior
+
+To exit the console:
+- Press **Enter** without typing anything
+- Press **Ctrl+C** to force quit
+
+The console will properly dispose of the HTTP client and other resources on exit.
+
+## Dependencies
+
+The console requires the following NuGet packages (from `RagConsole.csproj`):
+
+```xml
+<PackageReference Include="Azure.AI.OpenAI" Version="2.1.0" />
+<PackageReference Include="Azure.Identity" Version="1.18.0" />
+<PackageReference Include="Azure.Search.Documents" Version="11.7.0" />
+<PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.3" />
+<PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.3" />
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="gear" href="/configuration/environment">
+    Learn how to configure Azure services and environment variables
+  </Card>
+  <Card title="RAG Orchestrator" icon="code" href="/api/services/rag-orchestrator">
+    Understand the orchestration logic behind the scenes
+  </Card>
+</CardGroup>

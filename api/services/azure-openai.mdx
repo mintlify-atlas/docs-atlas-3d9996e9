@@ -1,0 +1,320 @@
+---
+title: AzureOpenAiService
+description: Service for generating AI-powered answers using Azure OpenAI's chat completion API with RAG context
+---
+
+## Overview
+
+The `AzureOpenAiService` class provides answer generation capabilities using Azure OpenAI. It constructs prompts with retrieved context and manages chat completion API requests.
+
+**Namespace:** `RagConsole.Services`
+
+**Interface:** `IAzureOpenAiService`
+
+**Source:** `src/RagConsole/Services/AzureOpenAiService.cs`
+
+## Constructor
+
+```csharp
+public AzureOpenAiService(
+    HttpClient httpClient,
+    AzureOptions options
+)
+```
+
+Initializes a new instance of the `AzureOpenAiService` class.
+
+<ParamField path="httpClient" type="HttpClient" required>
+  HTTP client for making API requests to Azure OpenAI
+</ParamField>
+
+<ParamField path="options" type="AzureOptions" required>
+  Configuration options containing Azure OpenAI endpoint, API key, deployment name, and generation parameters
+</ParamField>
+
+## Methods
+
+### GenerateAnswerAsync
+
+Generates an AI-powered answer to a question using retrieved context sources.
+
+```csharp
+public async Task<string> GenerateAnswerAsync(
+    string question,
+    IReadOnlyList<RagSource> sources,
+    string systemPrompt,
+    CancellationToken cancellationToken = default
+)
+```
+
+<ParamField path="question" type="string" required>
+  The user's question to be answered
+</ParamField>
+
+<ParamField path="sources" type="IReadOnlyList<RagSource>" required>
+  List of retrieved documents from Azure AI Search providing context for the answer
+</ParamField>
+
+<ParamField path="systemPrompt" type="string" required>
+  System-level instructions that guide the AI's behavior and response style
+</ParamField>
+
+<ParamField path="cancellationToken" type="CancellationToken" default="default">
+  Token to cancel the asynchronous operation
+</ParamField>
+
+**Returns:** `Task<string>`
+
+The generated answer as a string.
+
+**Throws:** `InvalidOperationException`
+- When the API returns a non-success status code
+- When the response cannot be parsed or contains no answer
+
+## API Request Structure
+
+The service constructs a chat completion request with the following structure:
+
+```json
+{
+  "messages": [
+    {
+      "role": "system",
+      "content": "<system prompt from parameter>"
+    },
+    {
+      "role": "user",
+      "content": "<constructed prompt with question and sources>"
+    }
+  ],
+  "temperature": 0.7,
+  "max_tokens": 800
+}
+```
+
+<Note>
+  Temperature and max_tokens values are configured via `options.AzureOpenAI.Temperature` and `options.AzureOpenAI.MaxTokens`.
+</Note>
+
+## Prompt Construction
+
+### With Sources
+
+When relevant sources are found, the prompt includes:
+
+```
+Pregunta del usuario:
+<question>
+
+Contexto recuperado:
+[1] Fuente: <source name>
+<content>
+
+[2] Fuente: <source name>
+<content>
+
+Responde usando solo la información del contexto.
+```
+
+### Without Sources
+
+When no sources are available:
+
+```
+Pregunta del usuario:
+<question>
+
+Contexto recuperado:
+- No se recuperó contexto relevante del índice.
+
+Si no hay contexto suficiente, indícalo explícitamente.
+```
+
+## Configuration
+
+The service uses the following configuration from `AzureOptions`:
+
+<ParamField path="Endpoint" type="string" required>
+  Azure OpenAI service endpoint URL
+</ParamField>
+
+<ParamField path="ApiKey" type="string" required>
+  Azure OpenAI API key for authentication
+</ParamField>
+
+<ParamField path="ChatDeployment" type="string" required>
+  Name of the deployed chat model (e.g., "gpt-4", "gpt-35-turbo")
+</ParamField>
+
+<ParamField path="ApiVersion" type="string" required>
+  Azure OpenAI API version (e.g., "2024-02-15-preview")
+</ParamField>
+
+<ParamField path="Temperature" type="double" default="0.7">
+  Controls randomness in responses (0.0 = deterministic, 1.0 = creative)
+</ParamField>
+
+<ParamField path="MaxTokens" type="int" default="800">
+  Maximum number of tokens in the generated response
+</ParamField>
+
+## Usage Example
+
+<CodeGroup>
+
+```csharp Basic Usage
+var httpClient = new HttpClient();
+var options = AzureOptionsLoader.Load();
+var openAiService = new AzureOpenAiService(httpClient, options);
+
+var sources = new List<RagSource>
+{
+    new RagSource(
+        "1",
+        "historia_real_madrid.pdf",
+        "El Real Madrid ganó su primera Copa de Europa en 1956...",
+        0.95
+    )
+};
+
+var answer = await openAiService.GenerateAnswerAsync(
+    "¿Cuándo ganó el Real Madrid su primera Champions?",
+    sources,
+    "Eres un asistente experto en la historia del Real Madrid."
+);
+
+Console.WriteLine(answer);
+```
+
+```csharp With Error Handling
+try
+{
+    var answer = await openAiService.GenerateAnswerAsync(
+        question,
+        sources,
+        systemPrompt,
+        cancellationToken
+    );
+    
+    return answer;
+}
+catch (InvalidOperationException ex) when (ex.Message.Contains("devolvió"))
+{
+    Console.WriteLine($"API Error: {ex.Message}");
+    throw;
+}
+catch (InvalidOperationException ex) when (ex.Message.Contains("extraer"))
+{
+    Console.WriteLine("Failed to parse response");
+    throw;
+}
+```
+
+```csharp Dependency Injection
+public void ConfigureServices(IServiceCollection services)
+{
+    services.AddHttpClient<IAzureOpenAiService, AzureOpenAiService>();
+    services.AddSingleton<AzureOptions>(AzureOptionsLoader.Load());
+}
+```
+
+</CodeGroup>
+
+## Response Parsing
+
+The service extracts answers from Azure OpenAI responses using the following logic:
+
+### Standard Response Format
+
+```json
+{
+  "choices": [
+    {
+      "message": {
+        "content": "<answer text>"
+      }
+    }
+  ]
+}
+```
+
+### Array Content Format
+
+For responses with content arrays:
+
+```json
+{
+  "choices": [
+    {
+      "message": {
+        "content": [
+          { "text": "Part 1" },
+          { "text": "Part 2" }
+        ]
+      }
+    }
+  ]
+}
+```
+
+The service concatenates text parts with newlines.
+
+## Internal Implementation
+
+### BuildPrompt
+
+Constructs the user prompt with question and context:
+
+```csharp
+private static string BuildPrompt(string question, IReadOnlyList<RagSource> sources)
+```
+
+- Formats the question
+- Lists all sources with numbering
+- Adds instructions for context-based answering
+- Handles cases with no sources
+
+### ExtractAnswer
+
+Parses the API response to extract the answer text:
+
+```csharp
+private static string ExtractAnswer(JsonElement root)
+```
+
+- Navigates the JSON response structure
+- Handles both string and array content formats
+- Returns empty string if parsing fails
+
+## Error Scenarios
+
+<ResponseField name="HTTP Error" type="InvalidOperationException">
+  Thrown when Azure OpenAI returns a non-2xx status code.
+  
+  Error message format: `"Azure OpenAI devolvió {status_code}: {response_body}"`
+</ResponseField>
+
+<ResponseField name="Parsing Error" type="InvalidOperationException">
+  Thrown when the response cannot be parsed or contains no answer.
+  
+  Error message: `"No se pudo extraer respuesta de Azure OpenAI."`
+</ResponseField>
+
+## Best Practices
+
+<Note>
+  **Token Management**: Monitor your max_tokens setting to balance response completeness with cost and latency.
+</Note>
+
+<Note>
+  **System Prompts**: Craft clear system prompts that guide the model to cite sources and acknowledge when information is insufficient.
+</Note>
+
+<Note>
+  **HTTP Client Lifecycle**: When using dependency injection, register HttpClient using `AddHttpClient` to leverage connection pooling.
+</Note>
+
+## Related Services
+
+- [AzureSearchService](/api/services/azure-search) - Provides context sources for answer generation
+- [RagOrchestrator](/api/services/rag-orchestrator) - Orchestrates search and generation

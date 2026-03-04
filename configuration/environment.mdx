@@ -1,0 +1,382 @@
+---
+title: 'Environment Configuration'
+description: 'Configure environment variables and appsettings.json for the Real Madrid RAG application'
+---
+
+## Overview
+
+The Real Madrid RAG application supports two configuration methods:
+
+1. **appsettings.json** - File-based configuration (recommended for development)
+2. **Environment Variables** - Runtime configuration (recommended for production)
+
+Environment variables take precedence over appsettings.json values.
+
+## Configuration Structure
+
+The application uses three main configuration sections:
+
+- **AzureOpenAI** - Azure OpenAI service settings
+- **AzureAISearch** - Azure AI Search settings
+- **SystemPrompt** - RAG system prompt customization
+
+## appsettings.json Configuration
+
+Create or modify `appsettings.json` in the application root directory:
+
+```json
+{
+  "AzureOpenAI": {
+    "Endpoint": "https://<tu-openai>.openai.azure.com/",
+    "ApiKey": "<tu-api-key>",
+    "ChatDeployment": "chat",
+    "EmbeddingDeployment": "embedding",
+    "ApiVersion": "2024-10-21",
+    "MaxTokens": 800,
+    "Temperature": 0.1
+  },
+  "AzureAISearch": {
+    "Endpoint": "https://<tu-search>.search.windows.net",
+    "ApiKey": "<tu-api-key>",
+    "IndexName": "rm-rag-index",
+    "Top": 5
+  },
+  "SystemPrompt": "Eres un asistente experto de Real Madrid. Responde solo con el contexto recuperado y sé claro y conciso."
+}
+```
+
+<Warning>
+Never commit `appsettings.json` with real API keys to version control. Use environment variables or Azure Key Vault for production deployments.
+</Warning>
+
+## Environment Variables
+
+All configuration options can be overridden using environment variables:
+
+### Azure OpenAI Variables
+
+<ParamField path="AZURE_OPENAI_ENDPOINT" type="string" required>
+  Azure OpenAI service endpoint URL
+  
+  **Example:** `https://my-openai.openai.azure.com/`
+  
+  **Source:** [AzureOptionsLoader.cs:11](/home/daytona/workspace/source/src/RagConsole/Config/AzureOptionsLoader.cs:11)
+</ParamField>
+
+<ParamField path="AZURE_OPENAI_API_KEY" type="string" required>
+  Azure OpenAI API key for authentication
+  
+  **Example:** `abc123...`
+  
+  **Source:** [AzureOptionsLoader.cs:12](/home/daytona/workspace/source/src/RagConsole/Config/AzureOptionsLoader.cs:12)
+</ParamField>
+
+<ParamField path="AZURE_OPENAI_CHAT_DEPLOYMENT" type="string" required>
+  Name of the chat completion model deployment
+  
+  **Default:** `chat`
+  
+  **Example:** `gpt-4` or `gpt-35-turbo`
+  
+  **Source:** [AzureOptionsLoader.cs:13](/home/daytona/workspace/source/src/RagConsole/Config/AzureOptionsLoader.cs:13)
+</ParamField>
+
+<ParamField path="AZURE_OPENAI_API_VERSION" type="string">
+  Azure OpenAI API version to use
+  
+  **Default:** `2024-10-21`
+  
+  **Example:** `2024-10-21`
+  
+  **Source:** [AzureOptionsLoader.cs:14](/home/daytona/workspace/source/src/RagConsole/Config/AzureOptionsLoader.cs:14)
+</ParamField>
+
+### Azure AI Search Variables
+
+<ParamField path="AZURE_SEARCH_ENDPOINT" type="string" required>
+  Azure AI Search service endpoint URL
+  
+  **Example:** `https://my-search.search.windows.net`
+  
+  **Source:** [AzureOptionsLoader.cs:16](/home/daytona/workspace/source/src/RagConsole/Config/AzureOptionsLoader.cs:16)
+</ParamField>
+
+<ParamField path="AZURE_SEARCH_API_KEY" type="string" required>
+  Azure AI Search admin API key
+  
+  **Example:** `xyz789...`
+  
+  **Source:** [AzureOptionsLoader.cs:17](/home/daytona/workspace/source/src/RagConsole/Config/AzureOptionsLoader.cs:17)
+</ParamField>
+
+<ParamField path="AZURE_SEARCH_INDEX_NAME" type="string" required>
+  Name of the search index containing Real Madrid documents
+  
+  **Default:** `rm-rag-index`
+  
+  **Example:** `rm-rag-index`
+  
+  **Source:** [AzureOptionsLoader.cs:18](/home/daytona/workspace/source/src/RagConsole/Config/AzureOptionsLoader.cs:18)
+</ParamField>
+
+### System Prompt Variable
+
+<ParamField path="RAG_SYSTEM_PROMPT" type="string">
+  Custom system prompt for the RAG assistant
+  
+  **Default:** `Eres un asistente experto de Real Madrid. Responde solo con el contexto recuperado y sé claro y conciso.`
+  
+  **Example:** `You are a Real Madrid expert. Answer only using the retrieved context.`
+  
+  **Source:** [AzureOptionsLoader.cs:22](/home/daytona/workspace/source/src/RagConsole/Config/AzureOptionsLoader.cs:22)
+</ParamField>
+
+## Configuration Options Reference
+
+### Azure OpenAI Options
+
+All Azure OpenAI configuration options defined in [AzureOptions.cs:52-61](/home/daytona/workspace/source/src/RagConsole/Config/AzureOptions.cs:52):
+
+<ParamField path="AzureOpenAI.Endpoint" type="string" required>
+  Azure OpenAI service endpoint URL
+</ParamField>
+
+<ParamField path="AzureOpenAI.ApiKey" type="string" required>
+  Azure OpenAI API key
+</ParamField>
+
+<ParamField path="AzureOpenAI.ChatDeployment" type="string" required>
+  Chat completion model deployment name
+</ParamField>
+
+<ParamField path="AzureOpenAI.EmbeddingDeployment" type="string" required>
+  Text embedding model deployment name
+  
+  **Default:** `embedding`
+</ParamField>
+
+<ParamField path="AzureOpenAI.ApiVersion" type="string">
+  Azure OpenAI API version
+  
+  **Default:** `2024-10-21`
+</ParamField>
+
+<ParamField path="AzureOpenAI.MaxTokens" type="integer">
+  Maximum tokens for chat completion responses
+  
+  **Default:** `800`
+  
+  **Range:** 1-4096 (depends on model)
+</ParamField>
+
+<ParamField path="AzureOpenAI.Temperature" type="number">
+  Temperature for response generation (controls randomness)
+  
+  **Default:** `0.1`
+  
+  **Range:** 0.0-2.0
+  
+  **Note:** Lower values (0.1) produce more focused and deterministic responses
+</ParamField>
+
+### Azure AI Search Options
+
+All Azure AI Search configuration options defined in [AzureOptions.cs:63-69](/home/daytona/workspace/source/src/RagConsole/Config/AzureOptions.cs:63):
+
+<ParamField path="AzureAISearch.Endpoint" type="string" required>
+  Azure AI Search service endpoint URL
+</ParamField>
+
+<ParamField path="AzureAISearch.ApiKey" type="string" required>
+  Azure AI Search admin API key
+</ParamField>
+
+<ParamField path="AzureAISearch.IndexName" type="string" required>
+  Search index name
+  
+  **Default:** `rm-rag-index`
+</ParamField>
+
+<ParamField path="AzureAISearch.Top" type="integer">
+  Number of top search results to retrieve for RAG context
+  
+  **Default:** `5`
+  
+  **Range:** 1-50
+  
+  **Note:** Higher values provide more context but may include less relevant documents
+</ParamField>
+
+### System Prompt
+
+<ParamField path="SystemPrompt" type="string">
+  System prompt that defines the assistant's behavior and response style
+  
+  **Default:** `Eres un asistente experto de Real Madrid. Responde solo con el contexto recuperado y sé claro y conciso.`
+  
+  **Note:** The system prompt guides the AI to respond only using retrieved context
+</ParamField>
+
+## Configuration Loading Order
+
+The application loads configuration in the following order (later sources override earlier ones):
+
+1. Default values from [AzureOptions.cs](/home/daytona/workspace/source/src/RagConsole/Config/AzureOptions.cs)
+2. Values from `appsettings.json`
+3. Environment variables (highest priority)
+
+The loader searches for `appsettings.json` in multiple locations:
+
+- Current working directory
+- Application base directory
+- Parent directory (for development scenarios)
+
+See [AzureOptionsLoader.cs:43-78](/home/daytona/workspace/source/src/RagConsole/Config/AzureOptionsLoader.cs:43) for implementation details.
+
+## Configuration Validation
+
+The application validates required configuration on startup. Missing or invalid values will cause the application to exit with error messages.
+
+### Required Fields
+
+The following fields are validated as required (see [AzureOptions.cs:9-44](/home/daytona/workspace/source/src/RagConsole/Config/AzureOptions.cs:9)):
+
+- `AzureOpenAI.Endpoint`
+- `AzureOpenAI.ApiKey`
+- `AzureOpenAI.ChatDeployment`
+- `AzureAISearch.Endpoint`
+- `AzureAISearch.ApiKey`
+- `AzureAISearch.IndexName`
+
+<Note>
+Placeholder values containing `<` or `>` characters (like `<tu-openai>`) are treated as missing values.
+</Note>
+
+### Validation Errors
+
+If validation fails, the application displays errors like:
+
+```
+Configuración incompleta. Revisa appsettings.json o variables de entorno:
+- AzureOpenAI.Endpoint es requerido.
+- AzureAISearch.ApiKey es requerido.
+```
+
+See [Program.cs:8-16](/home/daytona/workspace/source/src/RagConsole/Program.cs:8) for validation implementation.
+
+## Example Configurations
+
+### Development Setup
+
+**appsettings.json:**
+
+```json
+{
+  "AzureOpenAI": {
+    "Endpoint": "https://my-dev-openai.openai.azure.com/",
+    "ApiKey": "dev-api-key-123",
+    "ChatDeployment": "gpt-35-turbo",
+    "EmbeddingDeployment": "embedding",
+    "MaxTokens": 500,
+    "Temperature": 0.2
+  },
+  "AzureAISearch": {
+    "Endpoint": "https://my-dev-search.search.windows.net",
+    "ApiKey": "dev-search-key-456",
+    "IndexName": "rm-dev-index",
+    "Top": 3
+  },
+  "SystemPrompt": "You are a Real Madrid expert assistant."
+}
+```
+
+### Production Setup (Environment Variables)
+
+**Bash/Linux:**
+
+```bash
+export AZURE_OPENAI_ENDPOINT="https://prod-openai.openai.azure.com/"
+export AZURE_OPENAI_API_KEY="prod-key-abc"
+export AZURE_OPENAI_CHAT_DEPLOYMENT="gpt-4"
+export AZURE_SEARCH_ENDPOINT="https://prod-search.search.windows.net"
+export AZURE_SEARCH_API_KEY="prod-search-xyz"
+export AZURE_SEARCH_INDEX_NAME="rm-rag-index"
+```
+
+**PowerShell:**
+
+```powershell
+$env:AZURE_OPENAI_ENDPOINT="https://prod-openai.openai.azure.com/"
+$env:AZURE_OPENAI_API_KEY="prod-key-abc"
+$env:AZURE_OPENAI_CHAT_DEPLOYMENT="gpt-4"
+$env:AZURE_SEARCH_ENDPOINT="https://prod-search.search.windows.net"
+$env:AZURE_SEARCH_API_KEY="prod-search-xyz"
+$env:AZURE_SEARCH_INDEX_NAME="rm-rag-index"
+```
+
+**Docker:**
+
+```dockerfile
+ENV AZURE_OPENAI_ENDPOINT=https://prod-openai.openai.azure.com/
+ENV AZURE_OPENAI_API_KEY=prod-key-abc
+ENV AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-4
+ENV AZURE_SEARCH_ENDPOINT=https://prod-search.search.windows.net
+ENV AZURE_SEARCH_API_KEY=prod-search-xyz
+ENV AZURE_SEARCH_INDEX_NAME=rm-rag-index
+```
+
+## Security Best Practices
+
+<Warning>
+**Never commit secrets to version control**
+
+Always use secure secret management:
+- Azure Key Vault for production
+- Environment variables for local development
+- `.gitignore` to exclude `appsettings.json`
+</Warning>
+
+### Recommended Practices
+
+1. **Use Managed Identities** - For Azure-hosted applications, use Azure Managed Identity instead of API keys
+2. **Rotate Keys Regularly** - Periodically regenerate API keys in the Azure Portal
+3. **Principle of Least Privilege** - Use read-only keys where possible
+4. **Separate Environments** - Use different Azure resources for dev/staging/prod
+
+## Troubleshooting
+
+### Configuration Not Loading
+
+If your configuration isn't loading:
+
+1. Verify `appsettings.json` is in the correct location
+2. Check file permissions (must be readable)
+3. Validate JSON syntax using a JSON validator
+4. Review console output for validation errors
+
+### Environment Variables Not Working
+
+If environment variables aren't being recognized:
+
+1. Verify variable names match exactly (case-sensitive on Linux)
+2. Restart your terminal/IDE after setting variables
+3. For systemd services, ensure variables are in the service file
+4. Check for typos in variable names
+
+### API Key Issues
+
+<Warning>
+API keys must not contain `<` or `>` characters. These are treated as placeholder values and will fail validation.
+</Warning>
+
+If you encounter API key validation errors:
+
+1. Regenerate keys from Azure Portal
+2. Ensure no extra whitespace or quotes around keys
+3. Use the primary key (key1) from Azure
+
+## Next Steps
+
+- [Azure Services Setup](/configuration/azure-setup) - Set up Azure resources
+- [Quickstart](/quickstart) - Run the application
+- [Development Guide](/development) - Learn about the codebase

@@ -1,0 +1,230 @@
+---
+title: RAG Fundamentals
+description: Understanding Retrieval-Augmented Generation and how it's implemented in the Real Madrid RAG project
+---
+
+# RAG Fundamentals
+
+Retrieval-Augmented Generation (RAG) is a technique that enhances Large Language Model (LLM) responses by retrieving relevant context from a knowledge base before generating an answer.
+
+## What is RAG?
+
+RAG combines two key components:
+
+1. **Retrieval**: Searching a knowledge base to find relevant information
+2. **Generation**: Using an LLM to generate answers based on the retrieved context
+
+This approach allows the model to provide accurate, up-to-date answers grounded in specific data sources rather than relying solely on its training data.
+
+<Info>
+The Real Madrid RAG project uses this technique to answer questions about Real Madrid using a curated knowledge base of club information.
+</Info>
+
+## RAG Architecture in This Project
+
+The RAG pipeline is orchestrated by the `RagOrchestrator` class, which coordinates the retrieval and generation phases:
+
+```csharp src/RagConsole/Orchestration/RagOrchestrator.cs
+public async Task<RagResponse> AskAsync(string question, CancellationToken cancellationToken = default)
+{
+    var request = new RagRequest(question);
+    var sources = await azureSearchService.SearchAsync(request.Question, cancellationToken);
+    var answer = await azureOpenAiService.GenerateAnswerAsync(request.Question, sources, options.SystemPrompt, cancellationToken);
+    return new RagResponse(answer, sources);
+}
+```
+
+### Pipeline Flow
+
+<Accordion title="Step 1: User Query">
+The user submits a question through a `RagRequest` object:
+
+```csharp src/RagConsole/Models/RagRequest.cs
+public sealed record RagRequest(string Question);
+```
+</Accordion>
+
+<Accordion title="Step 2: Document Retrieval">
+The `AzureSearchService` searches the Azure AI Search index to find relevant documents:
+
+```csharp src/RagConsole/Services/AzureSearchService.cs
+public async Task<IReadOnlyList<RagSource>> SearchAsync(string question, CancellationToken cancellationToken = default)
+{
+    var searchOptions = new SearchOptions
+    {
+        Size = options.AzureAISearch.Top
+    };
+
+    var response = await searchClient.SearchAsync<SearchDocument>(question, searchOptions, cancellationToken);
+    // ... process results
+}
+```
+
+By default, the system retrieves the top 5 most relevant documents (configured via `AzureAISearch.Top`).
+</Accordion>
+
+<Accordion title="Step 3: Context Assembly">
+Retrieved documents are transformed into `RagSource` objects containing:
+
+```csharp src/RagConsole/Models/RagResponse.cs
+public sealed record RagSource(string Id, string Source, string Content, double Score);
+```
+
+- **Id**: Unique identifier for the document chunk
+- **Source**: Origin of the information (file name, URL, or title)
+- **Content**: The actual text content
+- **Score**: Relevance score from the search service
+</Accordion>
+
+<Accordion title="Step 4: Prompt Construction">
+The `BuildPrompt` method creates a structured prompt combining the user's question with retrieved context:
+
+```csharp src/RagConsole/Services/AzureOpenAiService.cs
+private static string BuildPrompt(string question, IReadOnlyList<RagSource> sources)
+{
+    var builder = new StringBuilder();
+    builder.AppendLine("Pregunta del usuario:");
+    builder.AppendLine(question);
+    builder.AppendLine();
+    builder.AppendLine("Contexto recuperado:");
+
+    for (var index = 0; index < sources.Count; index++)
+    {
+        var source = sources[index];
+        builder.AppendLine($"[{index + 1}] Fuente: {source.Source}");
+        builder.AppendLine(source.Content);
+        builder.AppendLine();
+    }
+
+    builder.AppendLine("Responde usando solo la información del contexto.");
+    return builder.ToString();
+}
+```
+
+This ensures the LLM has clear separation between the user's question and the supporting context.
+</Accordion>
+
+<Accordion title="Step 5: Answer Generation">
+The prompt is sent to Azure OpenAI with a system message:
+
+```csharp src/RagConsole/Services/AzureOpenAiService.cs
+var payload = new
+{
+    messages = new object[]
+    {
+        new { role = "system", content = systemPrompt },
+        new { role = "user", content = prompt }
+    },
+    temperature = options.AzureOpenAI.Temperature,
+    max_tokens = options.AzureOpenAI.MaxTokens
+};
+```
+
+Default configuration:
+- **Temperature**: 0.1 (low randomness for more factual responses)
+- **Max Tokens**: 800
+- **System Prompt**: "Eres un asistente experto de Real Madrid. Responde solo con el contexto recuperado y sé claro y conciso."
+</Accordion>
+
+<Accordion title="Step 6: Response Delivery">
+The final response includes both the generated answer and the source documents:
+
+```csharp src/RagConsole/Models/RagResponse.cs
+public sealed record RagResponse(string Answer, IReadOnlyList<RagSource> Sources);
+```
+
+This allows users to verify the answer against the original sources.
+</Accordion>
+
+## Key Design Principles
+
+### Flexible Document Schema
+
+The search service handles various document field names automatically:
+
+```csharp src/RagConsole/Services/AzureSearchService.cs
+var id = GetFirstString(item.Document, "id", "chunk_id", "key") ?? Guid.NewGuid().ToString("N");
+var content = GetFirstString(item.Document, "content", "chunk", "text", "page_content") ?? string.Empty;
+var source = GetFirstString(item.Document, "source", "title", "file", "url") ?? "desconocido";
+```
+
+This makes the system compatible with different indexing strategies.
+
+### Grounded Responses
+
+<Warning>
+The system prompt explicitly instructs the model to "Responde usando solo la información del contexto" (respond using only information from the context). This prevents hallucinations and ensures answers are grounded in the knowledge base.
+</Warning>
+
+### No-Context Handling
+
+When no relevant documents are found:
+
+```csharp src/RagConsole/Services/AzureOpenAiService.cs
+if (sources.Count == 0)
+{
+    builder.AppendLine("- No se recuperó contexto relevante del índice.");
+    builder.AppendLine();
+    builder.AppendLine("Si no hay contexto suficiente, indícalo explícitamente.");
+    return builder.ToString();
+}
+```
+
+The model is instructed to explicitly indicate when it lacks sufficient context.
+
+## Configuration
+
+RAG behavior is controlled through `AzureOptions` (/home/daytona/workspace/source/src/RagConsole/Config/AzureOptions.cs:4):
+
+```csharp
+public sealed class AzureOptions
+{
+    public AzureOpenAiOptions AzureOpenAI { get; init; } = new();
+    public AzureAiSearchOptions AzureAISearch { get; init; } = new();
+    public string SystemPrompt { get; init; } = "...";
+}
+```
+
+### Search Configuration
+
+```csharp
+public sealed class AzureAiSearchOptions
+{
+    public string Endpoint { get; init; } = string.Empty;
+    public string ApiKey { get; init; } = string.Empty;
+    public string IndexName { get; init; } = string.Empty;
+    public int Top { get; init; } = 5;  // Number of documents to retrieve
+}
+```
+
+### Generation Configuration
+
+```csharp
+public sealed class AzureOpenAiOptions
+{
+    public string Endpoint { get; init; } = string.Empty;
+    public string ApiKey { get; init; } = string.Empty;
+    public string ChatDeployment { get; init; } = string.Empty;
+    public string ApiVersion { get; init; } = "2024-10-21";
+    public int MaxTokens { get; init; } = 800;
+    public double Temperature { get; init; } = 0.1;
+}
+```
+
+<Note>
+Lower temperature values (like 0.1) produce more deterministic, factual responses, which is ideal for RAG applications where accuracy is paramount.
+</Note>
+
+## Best Practices
+
+1. **Keep temperature low** (0.0-0.3) for factual question-answering
+2. **Retrieve enough context** (3-10 documents) without overwhelming the model
+3. **Use clear system prompts** that emphasize grounding in the provided context
+4. **Return source documents** so users can verify information
+5. **Handle edge cases** like empty search results gracefully
+
+## Next Steps
+
+- Learn about [Azure Integration](/concepts/azure-integration) to understand how the Azure services work together
+- Explore the configuration options in detail
+- Understand indexing and embedding strategies

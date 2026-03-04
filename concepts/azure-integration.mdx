@@ -1,0 +1,472 @@
+---
+title: Azure Integration
+description: How Azure AI Search and Azure OpenAI integrate to power the Real Madrid RAG system
+---
+
+# Azure Integration
+
+This project leverages two core Azure AI services to implement the RAG pipeline:
+
+1. **Azure AI Search** - Vector and full-text search for document retrieval
+2. **Azure OpenAI** - GPT models for natural language generation
+
+## Architecture Overview
+
+The `RagOrchestrator` coordinates between these services (/home/daytona/workspace/source/src/RagConsole/Orchestration/RagOrchestrator.cs:13):
+
+```csharp
+public sealed class RagOrchestrator
+{
+    private readonly IAzureSearchService azureSearchService;
+    private readonly IAzureOpenAiService azureOpenAiService;
+    private readonly AzureOptions options;
+
+    public RagOrchestrator(IAzureSearchService azureSearchService, IAzureOpenAiService azureOpenAiService)
+    {
+        this.azureSearchService = azureSearchService;
+        this.azureOpenAiService = azureOpenAiService;
+        options = AzureOptionsLoader.Load();
+    }
+}
+```
+
+## Azure AI Search Integration
+
+### Service Initialization
+
+The `AzureSearchService` class wraps the Azure Search SDK (/home/daytona/workspace/source/src/RagConsole/Services/AzureSearchService.cs:14):
+
+```csharp
+public sealed class AzureSearchService : IAzureSearchService
+{
+    private readonly SearchClient searchClient;
+    private readonly AzureOptions options;
+
+    public AzureSearchService(AzureOptions options)
+    {
+        this.options = options;
+        searchClient = new SearchClient(
+            new Uri(options.AzureAISearch.Endpoint),
+            options.AzureAISearch.IndexName,
+            new AzureKeyCredential(options.AzureAISearch.ApiKey));
+    }
+}
+```
+
+<Info>
+The `SearchClient` is initialized with three key parameters:
+- **Endpoint**: Your Azure AI Search service URL
+- **IndexName**: The specific index containing Real Madrid documents
+- **ApiKey**: API key for authentication
+</Info>
+
+### Search Execution
+
+The search operation uses Azure's `SearchAsync` API (/home/daytona/workspace/source/src/RagConsole/Services/AzureSearchService.cs:23):
+
+```csharp
+public async Task<IReadOnlyList<RagSource>> SearchAsync(string question, CancellationToken cancellationToken = default)
+{
+    var searchOptions = new SearchOptions
+    {
+        Size = options.AzureAISearch.Top
+    };
+
+    var response = await searchClient.SearchAsync<SearchDocument>(question, searchOptions, cancellationToken);
+    var results = new List<RagSource>();
+
+    await foreach (var item in response.Value.GetResultsAsync())
+    {
+        var id = GetFirstString(item.Document, "id", "chunk_id", "key") ?? Guid.NewGuid().ToString("N");
+        var content = GetFirstString(item.Document, "content", "chunk", "text", "page_content") ?? string.Empty;
+        var source = GetFirstString(item.Document, "source", "title", "file", "url") ?? "desconocido";
+        var score = item.Score ?? 0d;
+
+        if (!string.IsNullOrWhiteSpace(content))
+        {
+            results.Add(new RagSource(id, source, content, score));
+        }
+    }
+
+    return results;
+}
+```
+
+### Flexible Field Mapping
+
+The service includes a helper method to handle different document schemas (/home/daytona/workspace/source/src/RagConsole/Services/AzureSearchService.cs:49):
+
+```csharp
+private static string? GetFirstString(SearchDocument document, params string[] keys)
+{
+    foreach (var key in keys)
+    {
+        if (!document.TryGetValue(key, out var value) || value is null)
+        {
+            continue;
+        }
+
+        var text = value.ToString();
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            return text;
+        }
+    }
+
+    return null;
+}
+```
+
+<Accordion title="Why Flexible Field Mapping?">
+Different indexing tools may use different field names:
+- Content fields: `content`, `chunk`, `text`, `page_content`
+- ID fields: `id`, `chunk_id`, `key`
+- Source fields: `source`, `title`, `file`, `url`
+
+This approach makes the system compatible with various indexing strategies without code changes.
+</Accordion>
+
+### Search Configuration
+
+```csharp src/RagConsole/Config/AzureOptions.cs
+public sealed class AzureAiSearchOptions
+{
+    public string Endpoint { get; init; } = string.Empty;
+    public string ApiKey { get; init; } = string.Empty;
+    public string IndexName { get; init; } = string.Empty;
+    public int Top { get; init; } = 5;  // Number of results to retrieve
+}
+```
+
+<Warning>
+The `Top` parameter controls how many documents are retrieved. Setting this too low may miss relevant context, while setting it too high may:
+- Increase API costs
+- Slow down response time
+- Introduce irrelevant information
+
+The default of 5 documents is a good starting point.
+</Warning>
+
+## Azure OpenAI Integration
+
+### Service Initialization
+
+The `AzureOpenAiService` uses HttpClient for direct REST API calls (/home/daytona/workspace/source/src/RagConsole/Services/AzureOpenAiService.cs:13):
+
+```csharp
+public sealed class AzureOpenAiService : IAzureOpenAiService
+{
+    private readonly HttpClient httpClient;
+    private readonly AzureOptions options;
+
+    public AzureOpenAiService(HttpClient httpClient, AzureOptions options)
+    {
+        this.httpClient = httpClient;
+        this.options = options;
+    }
+}
+```
+
+<Note>
+This implementation uses the Azure OpenAI REST API directly rather than the official SDK, providing more control over request/response handling.
+</Note>
+
+### Answer Generation
+
+The core generation method constructs and sends chat completion requests (/home/daytona/workspace/source/src/RagConsole/Services/AzureOpenAiService.cs:19):
+
+```csharp
+public async Task<string> GenerateAnswerAsync(string question, IReadOnlyList<RagSource> sources, string systemPrompt, CancellationToken cancellationToken = default)
+{
+    var endpoint = options.AzureOpenAI.Endpoint.TrimEnd('/');
+    var deployment = options.AzureOpenAI.ChatDeployment;
+    var apiVersion = options.AzureOpenAI.ApiVersion;
+
+    var url = $"{endpoint}/openai/deployments/{deployment}/chat/completions?api-version={apiVersion}";
+
+    var prompt = BuildPrompt(question, sources);
+
+    var payload = new
+    {
+        messages = new object[]
+        {
+            new { role = "system", content = systemPrompt },
+            new { role = "user", content = prompt }
+        },
+        temperature = options.AzureOpenAI.Temperature,
+        max_tokens = options.AzureOpenAI.MaxTokens
+    };
+
+    using var request = new HttpRequestMessage(HttpMethod.Post, url)
+    {
+        Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+    };
+
+    request.Headers.Add("api-key", options.AzureOpenAI.ApiKey);
+
+    using var response = await httpClient.SendAsync(request, cancellationToken);
+    var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+
+    if (!response.IsSuccessStatusCode)
+    {
+        throw new InvalidOperationException($"Azure OpenAI devolvió {(int)response.StatusCode}: {responseBody}");
+    }
+
+    using var json = JsonDocument.Parse(responseBody);
+    var answer = ExtractAnswer(json.RootElement);
+
+    if (string.IsNullOrWhiteSpace(answer))
+    {
+        throw new InvalidOperationException("No se pudo extraer respuesta de Azure OpenAI.");
+    }
+
+    return answer;
+}
+```
+
+### API Endpoint Construction
+
+The service builds the Azure OpenAI endpoint URL:
+
+```csharp
+var url = $"{endpoint}/openai/deployments/{deployment}/chat/completions?api-version={apiVersion}";
+```
+
+Example URL:
+```
+https://your-resource.openai.azure.com/openai/deployments/gpt-4/chat/completions?api-version=2024-10-21
+```
+
+### Request Payload Structure
+
+```csharp
+var payload = new
+{
+    messages = new object[]
+    {
+        new { role = "system", content = systemPrompt },
+        new { role = "user", content = prompt }
+    },
+    temperature = options.AzureOpenAI.Temperature,
+    max_tokens = options.AzureOpenAI.MaxTokens
+};
+```
+
+<Accordion title="Message Roles Explained">
+- **system**: Sets the assistant's behavior and persona. In this case: "Eres un asistente experto de Real Madrid. Responde solo con el contexto recuperado y sé claro y conciso."
+- **user**: Contains the actual prompt with the user's question and retrieved context
+</Accordion>
+
+### Response Extraction
+
+The service includes robust JSON parsing to extract the answer (/home/daytona/workspace/source/src/RagConsole/Services/AzureOpenAiService.cs:94):
+
+```csharp
+private static string ExtractAnswer(JsonElement root)
+{
+    if (!root.TryGetProperty("choices", out var choices) || choices.ValueKind != JsonValueKind.Array || choices.GetArrayLength() == 0)
+    {
+        return string.Empty;
+    }
+
+    var firstChoice = choices[0];
+    if (!firstChoice.TryGetProperty("message", out var message))
+    {
+        return string.Empty;
+    }
+
+    if (!message.TryGetProperty("content", out var content))
+    {
+        return string.Empty;
+    }
+
+    if (content.ValueKind == JsonValueKind.String)
+    {
+        return content.GetString() ?? string.Empty;
+    }
+
+    // Handle array responses (for multipart content)
+    if (content.ValueKind == JsonValueKind.Array)
+    {
+        var parts = new List<string>();
+        foreach (var item in content.EnumerateArray())
+        {
+            if (item.TryGetProperty("text", out var textNode) && textNode.ValueKind == JsonValueKind.String)
+            {
+                var part = textNode.GetString();
+                if (!string.IsNullOrWhiteSpace(part))
+                {
+                    parts.Add(part);
+                }
+            }
+        }
+
+        return string.Join(Environment.NewLine, parts);
+    }
+
+    return string.Empty;
+}
+```
+
+<Info>
+This method handles both simple string responses and structured array responses, making it compatible with different OpenAI response formats.
+</Info>
+
+### OpenAI Configuration
+
+```csharp src/RagConsole/Config/AzureOptions.cs
+public sealed class AzureOpenAiOptions
+{
+    public string Endpoint { get; init; } = string.Empty;
+    public string ApiKey { get; init; } = string.Empty;
+    public string ChatDeployment { get; init; } = string.Empty;
+    public string EmbeddingDeployment { get; init; } = string.Empty;
+    public string ApiVersion { get; init; } = "2024-10-21";
+    public int MaxTokens { get; init; } = 800;
+    public double Temperature { get; init; } = 0.1;
+}
+```
+
+**Key Parameters:**
+
+- **ChatDeployment**: Your GPT model deployment name (e.g., "gpt-4", "gpt-35-turbo")
+- **ApiVersion**: Azure OpenAI API version (default: 2024-10-21)
+- **MaxTokens**: Maximum response length (800 tokens ≈ 600 words)
+- **Temperature**: 0.1 for factual, deterministic responses
+
+## Configuration Management
+
+All Azure settings are centralized in `AzureOptions` (/home/daytona/workspace/source/src/RagConsole/Config/AzureOptions.cs:4):
+
+```csharp
+public sealed class AzureOptions
+{
+    public AzureOpenAiOptions AzureOpenAI { get; init; } = new();
+    public AzureAiSearchOptions AzureAISearch { get; init; } = new();
+    public string SystemPrompt { get; init; } = "Eres un asistente experto de Real Madrid. Responde solo con el contexto recuperado y sé claro y conciso.";
+}
+```
+
+### Configuration Validation
+
+The options class includes validation logic (/home/daytona/workspace/source/src/RagConsole/Config/AzureOptions.cs:9):
+
+```csharp
+public List<string> Validate()
+{
+    var errors = new List<string>();
+
+    if (IsMissing(AzureOpenAI.Endpoint))
+    {
+        errors.Add("AzureOpenAI.Endpoint es requerido.");
+    }
+
+    if (IsMissing(AzureOpenAI.ApiKey))
+    {
+        errors.Add("AzureOpenAI.ApiKey es requerido.");
+    }
+
+    if (IsMissing(AzureOpenAI.ChatDeployment))
+    {
+        errors.Add("AzureOpenAI.ChatDeployment es requerido.");
+    }
+
+    if (IsMissing(AzureAISearch.Endpoint))
+    {
+        errors.Add("AzureAISearch.Endpoint es requerido.");
+    }
+
+    if (IsMissing(AzureAISearch.ApiKey))
+    {
+        errors.Add("AzureAISearch.ApiKey es requerido.");
+    }
+
+    if (IsMissing(AzureAISearch.IndexName))
+    {
+        errors.Add("AzureAISearch.IndexName es requerido.");
+    }
+
+    return errors;
+}
+
+private static bool IsMissing(string? value)
+{
+    return string.IsNullOrWhiteSpace(value) || value.Contains("<") || value.Contains(">");
+}
+```
+
+<Warning>
+The validation checks for placeholder values (containing `<` or `>`) to catch common configuration mistakes where users forget to replace template values.
+</Warning>
+
+## Error Handling
+
+### Azure OpenAI Errors
+
+```csharp
+if (!response.IsSuccessStatusCode)
+{
+    throw new InvalidOperationException($"Azure OpenAI devolvió {(int)response.StatusCode}: {responseBody}");
+}
+```
+
+HTTP errors from Azure OpenAI include the status code and response body for debugging.
+
+### Empty Response Handling
+
+```csharp
+if (string.IsNullOrWhiteSpace(answer))
+{
+    throw new InvalidOperationException("No se pudo extraer respuesta de Azure OpenAI.");
+}
+```
+
+The service validates that a non-empty answer was extracted from the API response.
+
+## Authentication
+
+Both services use API key authentication:
+
+**Azure AI Search:**
+```csharp
+new AzureKeyCredential(options.AzureAISearch.ApiKey)
+```
+
+**Azure OpenAI:**
+```csharp
+request.Headers.Add("api-key", options.AzureOpenAI.ApiKey);
+```
+
+<Note>
+API keys should be stored securely (environment variables, Azure Key Vault, etc.) and never committed to source control.
+</Note>
+
+## Best Practices
+
+1. **Use Managed Identity** in production instead of API keys when possible
+2. **Set appropriate timeouts** on HttpClient for OpenAI calls
+3. **Implement retry logic** for transient failures
+4. **Monitor token usage** to optimize costs
+5. **Cache search results** when appropriate to reduce API calls
+6. **Use the latest API version** for new features and improvements
+
+## Performance Considerations
+
+### Latency Sources
+
+1. **Search latency**: Typically 100-500ms depending on index size
+2. **OpenAI generation**: 1-5 seconds depending on response length and model
+3. **Network overhead**: Varies by region and connection
+
+### Optimization Tips
+
+- Deploy Azure resources in the same region
+- Use connection pooling for HttpClient
+- Consider streaming responses for better perceived performance
+- Reduce `MaxTokens` if shorter answers are acceptable
+
+## Next Steps
+
+- Review the [RAG Fundamentals](/concepts/rag-fundamentals) to understand the complete pipeline
+- Learn about indexing strategies for optimal search results
+- Explore prompt engineering techniques to improve answer quality

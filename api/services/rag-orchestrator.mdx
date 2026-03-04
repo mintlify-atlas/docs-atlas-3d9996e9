@@ -1,0 +1,155 @@
+---
+title: RagOrchestrator
+description: Orchestrates RAG (Retrieval-Augmented Generation) operations by coordinating Azure AI Search and Azure OpenAI services
+---
+
+## Overview
+
+The `RagOrchestrator` class is the main entry point for performing RAG operations in the Real Madrid RAG project. It coordinates document retrieval from Azure AI Search with answer generation from Azure OpenAI to provide contextually accurate responses.
+
+**Namespace:** `RagConsole.Orchestration`
+
+**Source:** `src/RagConsole/Orchestration/RagOrchestrator.cs`
+
+## Constructor
+
+```csharp
+public RagOrchestrator(
+    IAzureSearchService azureSearchService,
+    IAzureOpenAiService azureOpenAiService
+)
+```
+
+Initializes a new instance of the `RagOrchestrator` class.
+
+<ParamField path="azureSearchService" type="IAzureSearchService" required>
+  Service for searching and retrieving relevant documents from Azure AI Search
+</ParamField>
+
+<ParamField path="azureOpenAiService" type="IAzureOpenAiService" required>
+  Service for generating AI-powered answers using Azure OpenAI
+</ParamField>
+
+<Note>
+  The orchestrator automatically loads Azure configuration options using `AzureOptionsLoader.Load()` during initialization.
+</Note>
+
+## Methods
+
+### AskAsync
+
+Processes a user question through the complete RAG pipeline: retrieval and generation.
+
+```csharp
+public async Task<RagResponse> AskAsync(
+    string question,
+    CancellationToken cancellationToken = default
+)
+```
+
+<ParamField path="question" type="string" required>
+  The user's question to be answered
+</ParamField>
+
+<ParamField path="cancellationToken" type="CancellationToken" default="default">
+  Token to cancel the asynchronous operation
+</ParamField>
+
+**Returns:** `Task<RagResponse>`
+
+A response containing the generated answer and the source documents used for context.
+
+#### Response Structure
+
+<ResponseField name="Answer" type="string">
+  The AI-generated answer based on retrieved context
+</ResponseField>
+
+<ResponseField name="Sources" type="IReadOnlyList<RagSource>">
+  List of source documents retrieved from Azure AI Search
+  
+  Each `RagSource` contains:
+  - `Id` (string): Unique identifier for the document chunk
+  - `Source` (string): Source file or document name
+  - `Content` (string): The actual text content from the document
+  - `Score` (double): Relevance score from the search engine
+</ResponseField>
+
+## Usage Example
+
+<CodeGroup>
+
+```csharp Example Usage
+var orchestrator = new RagOrchestrator(azureSearchService, azureOpenAiService);
+
+var response = await orchestrator.AskAsync(
+    "¿Cuántas Champions League ha ganado el Real Madrid?",
+    cancellationToken
+);
+
+Console.WriteLine($"Answer: {response.Answer}");
+Console.WriteLine($"Sources used: {response.Sources.Count}");
+
+foreach (var source in response.Sources)
+{
+    Console.WriteLine($"- {source.Source} (Score: {source.Score:F2})");
+}
+```
+
+```csharp With Dependency Injection
+public class RagApplication
+{
+    private readonly RagOrchestrator orchestrator;
+
+    public RagApplication(RagOrchestrator orchestrator)
+    {
+        this.orchestrator = orchestrator;
+    }
+
+    public async Task<RagResponse> ProcessQuestionAsync(string question)
+    {
+        return await orchestrator.AskAsync(question);
+    }
+}
+```
+
+</CodeGroup>
+
+## Pipeline Flow
+
+The `AskAsync` method executes the following steps:
+
+1. **Create Request**: Wraps the question in a `RagRequest` object
+2. **Retrieve Context**: Calls `AzureSearchService.SearchAsync()` to find relevant documents
+3. **Generate Answer**: Calls `AzureOpenAiService.GenerateAnswerAsync()` with the question, sources, and system prompt
+4. **Return Response**: Packages the answer and sources into a `RagResponse`
+
+## Dependencies
+
+- **IAzureSearchService**: Document retrieval service ([see docs](/api/services/azure-search))
+- **IAzureOpenAiService**: Answer generation service ([see docs](/api/services/azure-openai))
+- **AzureOptions**: Configuration loaded from application settings
+
+## Error Handling
+
+<Note>
+  Exceptions from underlying services (search or OpenAI) will propagate up. Ensure proper error handling when calling `AskAsync`.
+</Note>
+
+```csharp Error Handling Example
+try
+{
+    var response = await orchestrator.AskAsync(question);
+    // Process response
+}
+catch (InvalidOperationException ex)
+{
+    // Handle Azure OpenAI errors
+    Console.WriteLine($"Error generating answer: {ex.Message}");
+}
+catch (Exception ex)
+{
+    // Handle other errors (network, authentication, etc.)
+    Console.WriteLine($"Unexpected error: {ex.Message}");
+}
+```

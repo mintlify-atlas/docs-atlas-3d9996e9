@@ -1,0 +1,25 @@
+---
+title: Error Handling and Logging
+description: Standards for error handling, logging, and monitoring in the Real Madrid RAG project
+---
+
+## Estándares obligatorios
+
+<Warning>
+Estos estándares son críticos para la estabilidad y observabilidad del sistema. Deben aplicarse consistentemente en todo el proyecto.
+</Warning>
+
+- Implementar un **middleware global de excepciones** en la capa API; nunca manejar excepciones de forma centralizada en controllers.
+- Usar **Serilog** para logging estructurado; no usar `Console.WriteLine`.
+- En Application, usar patrón **`Result<T>`** para errores de negocio esperados; no lanzar excepciones para flujos esperados.
+- Responder errores de API con **`ProblemDetails` (RFC 7807)** de forma consistente en todos los endpoints.
+
+## Niveles de log
+
+<Info>
+Usa estos niveles de log de forma consistente para facilitar el diagnóstico y monitoreo del sistema.
+</Info>
+
+- **ERROR**: excepciones y fallos técnicos no controlados.
+- **WARNING**: validaciones/reglas de negocio que impiden ejecutar una operación.
+- **INFO**: eventos clave del sistema (inicio/fin de casos de uso, operaciones relevantes, integraciones).

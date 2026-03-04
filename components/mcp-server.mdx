@@ -1,0 +1,345 @@
+---
+title: MCP Server
+description: Model Context Protocol server exposing coding standards as tools
+---
+
+The Real Madrid MCP Server is a web service that implements the Model Context Protocol (MCP), exposing coding standards documents as queryable tools that can be accessed by AI assistants and other MCP clients.
+
+## Overview
+
+The MCP server provides three main tools for accessing coding standards:
+- **GetCodingStandard**: Retrieve a specific standard by topic
+- **ListAvailableStandards**: List all available standard documents
+- **SearchInStandards**: Search across all standards for keywords
+
+<Info>
+The Model Context Protocol (MCP) enables AI assistants to access external data and tools. This server makes coding standards available to AI coding assistants like Claude, Cursor, and others.
+</Info>
+
+## Running the server
+
+### Using Docker
+
+The recommended way to run the MCP server is via Docker:
+
+```bash
+cd RealMadrid.MCPServer/RealMadrid.MCPServer
+docker build -t realmadrid-mcp .
+docker run -p 8080:8080 realmadrid-mcp
+```
+
+### Using .NET CLI
+
+Alternatively, run directly with .NET:
+
+```bash
+cd RealMadrid.MCPServer/RealMadrid.MCPServer
+dotnet run
+```
+
+The server listens on **port 8080** by default. You can override this with the `ASPNETCORE_URLS` environment variable:
+
+```bash
+ASPNETCORE_URLS=http://+:5000 dotnet run
+```
+
+## Server implementation
+
+The server is built using ASP.NET Core with minimal API configuration:
+
+```csharp Program.cs
+var builder = WebApplication.CreateBuilder(args);
+
+builder.WebHost.UseUrls(Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? "http://+:8080");
+
+builder.Services
+    .AddMcpServer()
+    .WithHttpServerTransport()
+    .WithToolsFromAssembly();
+
+var app = builder.Build();
+
+app.MapMcp();
+
+await app.RunAsync();
+```
+
+The `WithToolsFromAssembly()` call automatically discovers all classes marked with `[McpServerToolType]` and methods marked with `[McpServerTool]`.
+
+## Available tools
+
+### GetCodingStandard
+
+Retrieves the full content of a coding standard document by topic name.
+
+**Parameters:**
+- `topic` (string): The standard topic name
+
+**Available topics:**
+- `architecture` - Architecture standards including Clean Architecture patterns
+- `naming-conventions` - Naming conventions for classes, methods, variables
+- `error-handling` - Error handling and logging best practices
+- `api-design` - API design guidelines
+
+**Example usage:**
+
+```json
+{
+  "tool": "GetCodingStandard",
+  "arguments": {
+    "topic": "architecture"
+  }
+}
+```
+
+**Implementation:**
+
+```csharp CodingStandardsTools.cs
+[McpServerTool, Description("Gets coding standard by topic. Topics: architecture, naming-conventions, error-handling, api-design.")]
+public static async Task<string> GetCodingStandard([Description("Standard topic name")] string topic)
+{
+    if (string.IsNullOrWhiteSpace(topic))
+    {
+        return "Topic is required. Try: architecture, naming-conventions, error-handling, api-design.";
+    }
+
+    if (!TopicToFile.TryGetValue(topic.Trim(), out var fileName))
+    {
+        return $"Topic '{topic}' not found. Available topics: {string.Join(", ", TopicToFile.Keys)}.";
+    }
+
+    var filePath = Path.Combine(StandardsBasePath, fileName);
+    if (!File.Exists(filePath))
+    {
+        return $"Standard file not found: {fileName}. Base path: {StandardsBasePath}";
+    }
+
+    return await File.ReadAllTextAsync(filePath);
+}
+```
+
+### ListAvailableStandards
+
+Returns an array of all available coding standard document names.
+
+**Parameters:** None
+
+**Returns:** Array of strings containing document names
+
+**Example usage:**
+
+```json
+{
+  "tool": "ListAvailableStandards",
+  "arguments": {}
+}
+```
+
+**Example response:**
+
+```json
+[
+  "api-design-guidelines",
+  "architecture-standards",
+  "error-handling-logging",
+  "naming-conventions"
+]
+```
+
+**Implementation:**
+
+```csharp CodingStandardsTools.cs
+[McpServerTool, Description("Lists all available coding standards. Call first if unsure which to fetch.")]
+public static Task<string[]> ListAvailableStandards()
+{
+    if (!Directory.Exists(StandardsBasePath))
+    {
+        return Task.FromResult(Array.Empty<string>());
+    }
+
+    var standards = Directory
+        .EnumerateFiles(StandardsBasePath, "*.md", SearchOption.TopDirectoryOnly)
+        .Select(path => Path.GetFileNameWithoutExtension(path)!)
+        .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    return Task.FromResult(standards);
+}
+```
+
+### SearchInStandards
+
+Searches all coding standards for a specific keyword and returns matching lines with context.
+
+**Parameters:**
+- `keyword` (string): The search term
+
+**Returns:** Formatted string with matches organized by file, including line numbers
+
+**Example usage:**
+
+```json
+{
+  "tool": "SearchInStandards",
+  "arguments": {
+    "keyword": "async"
+  }
+}
+```
+
+**Example response:**
+
+```
+architecture-standards
+L12: - Usar `async/await` en toda operación I/O y en la cadena de llamadas asociada.
+
+error-handling-logging
+L15: Always use async/await for I/O operations
+L23: public async Task<Result<User>> GetUserAsync(int id)
+```
+
+**Implementation:**
+
+```csharp CodingStandardsTools.cs
+[McpServerTool, Description("Searches all standards for a keyword. Use for concepts like logging, async.")]
+public static async Task<string> SearchInStandards([Description("Keyword to search in standards")] string keyword)
+{
+    if (string.IsNullOrWhiteSpace(keyword))
+    {
+        return "Keyword is required.";
+    }
+
+    if (!Directory.Exists(StandardsBasePath))
+    {
+        return $"Standards directory does not exist: {StandardsBasePath}";
+    }
+
+    var files = Directory
+        .EnumerateFiles(StandardsBasePath, "*.md", SearchOption.TopDirectoryOnly)
+        .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    var matchesByFile = new List<string>();
+    foreach (var file in files)
+    {
+        var lines = await File.ReadAllLinesAsync(file);
+        var matchedLines = lines
+            .Select((line, index) => new { line, index })
+            .Where(x => x.line.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+            .Select(x => $"L{x.index + 1}: {x.line.Trim()}")
+            .ToList();
+
+        if (matchedLines.Count == 0)
+        {
+            continue;
+        }
+
+        var fileName = Path.GetFileNameWithoutExtension(file);
+        matchesByFile.Add($"{fileName}\n{string.Join(Environment.NewLine, matchedLines)}");
+    }
+
+    return matchesByFile.Count == 0
+        ? $"No matches found for '{keyword}'."
+        : string.Join($"{Environment.NewLine}{Environment.NewLine}", matchesByFile);
+}
+```
+
+## Architecture
+
+### Standards loading
+
+The server loads coding standards from markdown files in the `coding-standards/` directory. These files are copied to the output directory during build:
+
+```xml RealMadrid.MCPServer.csproj
+<ItemGroup>
+  <Content Include="..\..\coding-standards\**\*.md" LinkBase="coding-standards">
+    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+  </Content>
+</ItemGroup>
+```
+
+### Topic mapping
+
+Topics are mapped to filenames using a case-insensitive dictionary:
+
+```csharp
+private static readonly IReadOnlyDictionary<string, string> TopicToFile = 
+    new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+{
+    ["architecture"] = "architecture-standards.md",
+    ["naming-conventions"] = "naming-conventions.md",
+    ["error-handling"] = "error-handling-logging.md",
+    ["api-design"] = "api-design-guidelines.md"
+};
+```
+
+## Dependencies
+
+The MCP server requires:
+
+```xml
+<PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.3" />
+<PackageReference Include="ModelContextProtocol" Version="1.0.0" />
+<PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.0.0" />
+```
+
+## Docker deployment
+
+The included Dockerfile creates a lightweight container:
+
+```dockerfile
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
+WORKDIR /app
+EXPOSE 8080
+
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+COPY ["RealMadrid.MCPServer.csproj", "."]
+RUN dotnet restore
+COPY . .
+RUN dotnet build -c Release -o /app/build
+
+FROM build AS publish
+RUN dotnet publish -c Release -o /app/publish
+
+FROM base AS final
+WORKDIR /app
+COPY --from=publish /app/publish .
+ENTRYPOINT ["dotnet", "RealMadrid.MCPServer.dll"]
+```
+
+<Note>
+The coding standards markdown files are automatically included in the Docker image during the publish step.
+</Note>
+
+## Integrating with AI assistants
+
+To use this MCP server with an AI coding assistant:
+
+1. **Start the server** on a known port (e.g., 8080)
+2. **Configure your AI assistant** to connect to the MCP server endpoint
+3. **Use the tools** through natural language requests
+
+Example conversation with an AI assistant:
+
+```
+User: What are the architecture standards for this project?
+Assistant: Let me check the coding standards...
+[Assistant calls GetCodingStandard with topic="architecture"]
+Assistant: According to the architecture standards, this project follows Clean Architecture with...
+```
+
+## Health and monitoring
+
+The server runs on ASP.NET Core, which provides built-in health check endpoints. You can add custom health checks if needed.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Coding Standards" icon="book" href="/development/standards/architecture">
+    Browse the coding standards exposed by this server
+  </Card>
+  <Card title="MCP Tools API" icon="wrench" href="/api/mcp/coding-standards-tools">
+    Detailed API reference for the tools
+  </Card>
+</CardGroup>

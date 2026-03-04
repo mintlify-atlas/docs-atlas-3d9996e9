@@ -1,0 +1,244 @@
+---
+title: 'CodingStandardsTools'
+description: 'MCP server tools for accessing and searching coding standards documentation'
+---
+
+## Overview
+
+The `CodingStandardsTools` MCP server provides tools to access, list, and search coding standards documentation. These tools enable AI agents and developers to retrieve best practices for architecture, naming conventions, error handling, and API design.
+
+<Note>
+All standards are stored as Markdown files in the `coding-standards` directory and are loaded from the server's base directory.
+</Note>
+
+## Available Topics
+
+The server supports the following standard topics:
+
+- `architecture` - Architecture standards and patterns
+- `naming-conventions` - Naming conventions and code style guidelines
+- `error-handling` - Error handling and logging best practices
+- `api-design` - API design guidelines and REST principles
+
+---
+
+## GetCodingStandard
+
+Retrieves a specific coding standard document by topic name.
+
+```csharp
+public static async Task<string> GetCodingStandard(string topic)
+```
+
+### Parameters
+
+<ParamField path="topic" type="string" required>
+  The standard topic name. Valid values: `architecture`, `naming-conventions`, `error-handling`, `api-design`
+</ParamField>
+
+### Returns
+
+<ResponseField name="content" type="string">
+  The full content of the requested coding standard document in Markdown format
+</ResponseField>
+
+### Error Responses
+
+- `"Topic is required. Try: architecture, naming-conventions, error-handling, api-design."` - When topic parameter is empty or null
+- `"Topic '{topic}' not found. Available topics: ..."` - When an invalid topic is provided
+- `"Standard file not found: {fileName}. Base path: {StandardsBasePath}"` - When the standard file doesn't exist
+
+### Usage Example
+
+<CodeGroup>
+
+```json MCP Request
+{
+  "method": "tools/call",
+  "params": {
+    "name": "GetCodingStandard",
+    "arguments": {
+      "topic": "architecture"
+    }
+  }
+}
+```
+
+```csharp C# Usage
+var standard = await CodingStandardsTools.GetCodingStandard("architecture");
+Console.WriteLine(standard);
+```
+
+```bash CLI Example
+# Via MCP protocol
+mcp call GetCodingStandard '{"topic": "naming-conventions"}'
+```
+
+</CodeGroup>
+
+<Note>
+Topic names are case-insensitive. Both `"architecture"` and `"Architecture"` will work.
+</Note>
+
+---
+
+## ListAvailableStandards
+
+Lists all available coding standard documents in the standards directory.
+
+```csharp
+public static Task<string[]> ListAvailableStandards()
+```
+
+### Parameters
+
+No parameters required.
+
+### Returns
+
+<ResponseField name="standards" type="string[]">
+  An array of available standard file names (without extensions), sorted alphabetically. Returns an empty array if the standards directory doesn't exist.
+</ResponseField>
+
+### Usage Example
+
+<CodeGroup>
+
+```json MCP Request
+{
+  "method": "tools/call",
+  "params": {
+    "name": "ListAvailableStandards",
+    "arguments": {}
+  }
+}
+```
+
+```csharp C# Usage
+var standards = await CodingStandardsTools.ListAvailableStandards();
+foreach (var standard in standards)
+{
+    Console.WriteLine($"- {standard}");
+}
+```
+
+```bash CLI Example
+# Via MCP protocol
+mcp call ListAvailableStandards '{}'
+```
+
+</CodeGroup>
+
+<Note>
+Call this method first if you're unsure which standards are available before fetching a specific one.
+</Note>
+
+---
+
+## SearchInStandards
+
+Searches all coding standards documents for a specific keyword and returns matching lines with context.
+
+```csharp
+public static async Task<string> SearchInStandards(string keyword)
+```
+
+### Parameters
+
+<ParamField path="keyword" type="string" required>
+  The keyword or phrase to search for across all standards documents. Search is case-insensitive.
+</ParamField>
+
+### Returns
+
+<ResponseField name="results" type="string">
+  A formatted string containing all matches grouped by file. Each match includes:
+  - File name (without extension)
+  - Line number (L#)
+  - The matched line content (trimmed)
+  
+  Returns `"No matches found for '{keyword}'."` if no results are found.
+</ResponseField>
+
+### Error Responses
+
+- `"Keyword is required."` - When keyword parameter is empty or null
+- `"Standards directory does not exist: {StandardsBasePath}"` - When the standards directory is missing
+
+### Usage Example
+
+<CodeGroup>
+
+```json MCP Request
+{
+  "method": "tools/call",
+  "params": {
+    "name": "SearchInStandards",
+    "arguments": {
+      "keyword": "async"
+    }
+  }
+}
+```
+
+```csharp C# Usage
+var results = await CodingStandardsTools.SearchInStandards("logging");
+Console.WriteLine(results);
+```
+
+```bash CLI Example
+# Via MCP protocol
+mcp call SearchInStandards '{"keyword": "dependency injection"}'
+```
+
+</CodeGroup>
+
+### Example Response Format
+
+```text
+architecture-standards
+L15: Use async/await for all I/O operations
+L42: Implement dependency injection for service composition
+
+error-handling-logging
+L8: Always log exceptions with full context
+L23: Use structured logging for better searchability
+```
+
+<Note>
+Use this tool to find specific concepts like "logging", "async", "validation", or "authentication" across all standards without knowing which document contains the information.
+</Note>
+
+---
+
+## Implementation Details
+
+### File Structure
+
+The server expects coding standards to be stored in the following structure:
+
+```
+{AppContext.BaseDirectory}/
+└── coding-standards/
+    ├── architecture-standards.md
+    ├── naming-conventions.md
+    ├── error-handling-logging.md
+    └── api-design-guidelines.md
+```
+
+### Topic Mapping
+
+Topic names are mapped to specific files (case-insensitive):
+
+| Topic | File Name |
+|-------|-----------|
+| `architecture` | `architecture-standards.md` |
+| `naming-conventions` | `naming-conventions.md` |
+| `error-handling` | `error-handling-logging.md` |
+| `api-design` | `api-design-guidelines.md` |
+
+### Source Code Reference
+
+Source file: `RealMadrid.MCPServer/RealMadrid.MCPServer/CodingStandardsTools.cs`
+
+The `CodingStandardsTools` class is marked with `[McpServerToolType]` attribute to register it as an MCP server tool provider. Each public static method decorated with `[McpServerTool]` becomes an available tool in the MCP protocol.

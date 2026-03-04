@@ -1,80 +1,306 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get the Real Madrid RAG system running in 5 minutes with this step-by-step guide
 ---
 
-## Get started in three steps
+# Quickstart Guide
 
-Get your documentation site running locally and make your first customization.
+Get the Real Madrid RAG system up and running quickly with this comprehensive guide.
 
-### Step 1: Set up your local environment
+## Prerequisites
+
+<Steps>
+  <Step title="Install .NET 8 SDK">
+    Download and install the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) for your platform.
+    
+    Verify installation:
+    ```bash
+    dotnet --version
+    # Should output: 8.0.x
+    ```
+  </Step>
+  
+  <Step title="Azure Resources">
+    You'll need access to:
+    
+    - **Azure OpenAI Service** with a deployed chat model (e.g., GPT-4, GPT-3.5-turbo)
+    - **Azure AI Search** service with a populated index
+    
+    <Info>
+      If you don't have these resources, you can create them through the [Azure Portal](https://portal.azure.com).
+    </Info>
+  </Step>
+  
+  <Step title="Gather Credentials">
+    Collect the following information:
+    
+    - Azure OpenAI endpoint (e.g., `https://your-openai.openai.azure.com/`)
+    - Azure OpenAI API key
+    - Chat deployment name
+    - Azure AI Search endpoint (e.g., `https://your-search.search.windows.net`)
+    - Azure AI Search API key
+    - Search index name
+  </Step>
+</Steps>
+
+## Installation
+
+### Clone and Build
+
+```bash
+cd workspace/source/src/RagConsole
+dotnet restore
+dotnet build
+```
+
+### Configure Settings
+
+You can configure the system using either `appsettings.json` or environment variables.
+
+<CodeGroup>
+
+```json appsettings.json
+{
+  "AzureOpenAI": {
+    "Endpoint": "https://your-openai.openai.azure.com/",
+    "ApiKey": "your-api-key",
+    "ChatDeployment": "chat",
+    "EmbeddingDeployment": "embedding",
+    "ApiVersion": "2024-10-21",
+    "MaxTokens": 800,
+    "Temperature": 0.1
+  },
+  "AzureAISearch": {
+    "Endpoint": "https://your-search.search.windows.net",
+    "ApiKey": "your-api-key",
+    "IndexName": "rm-rag-index",
+    "Top": 5
+  },
+  "SystemPrompt": "Eres un asistente experto de Real Madrid. Responde solo con el contexto recuperado y sé claro y conciso."
+}
+```
+
+```bash Environment Variables
+export AZURE_OPENAI_ENDPOINT="https://your-openai.openai.azure.com/"
+export AZURE_OPENAI_API_KEY="your-api-key"
+export AZURE_OPENAI_CHAT_DEPLOYMENT="chat"
+export AZURE_OPENAI_API_VERSION="2024-10-21"
+export AZURE_SEARCH_ENDPOINT="https://your-search.search.windows.net"
+export AZURE_SEARCH_API_KEY="your-api-key"
+export AZURE_SEARCH_INDEX_NAME="rm-rag-index"
+export RAG_SYSTEM_PROMPT="Eres un asistente experto de Real Madrid."
+```
+
+</CodeGroup>
+
+<Warning>
+  Never commit `appsettings.json` with real credentials to version control. Use environment variables for production deployments.
+</Warning>
+
+## Configuration Reference
+
+### Azure OpenAI Settings
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `Endpoint` | string | Required | Azure OpenAI service endpoint URL |
+| `ApiKey` | string | Required | Azure OpenAI API authentication key |
+| `ChatDeployment` | string | Required | Name of deployed chat model |
+| `EmbeddingDeployment` | string | Optional | Name of deployed embedding model |
+| `ApiVersion` | string | `2024-10-21` | Azure OpenAI API version |
+| `MaxTokens` | int | `800` | Maximum tokens in generated responses |
+| `Temperature` | double | `0.1` | Response randomness (0.0-2.0, lower is more deterministic) |
+
+### Azure AI Search Settings
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `Endpoint` | string | Required | Azure AI Search service endpoint |
+| `ApiKey` | string | Required | Search service API key |
+| `IndexName` | string | Required | Name of the search index to query |
+| `Top` | int | `5` | Number of documents to retrieve per query |
+
+<Info>
+  The `Top` parameter controls how many documents are retrieved from Azure AI Search. Higher values provide more context but increase token usage and latency.
+</Info>
+
+## Running the Application
+
+### RagConsole (Interactive Mode)
+
+```bash
+cd workspace/source/src/RagConsole
+dotnet run
+```
+
+You'll see the prompt:
+
+```
+RAG Console lista. Escribe tu pregunta (ENTER vacío para salir):
+
+Pregunta:
+```
+
+<Steps>
+  <Step title="Ask a Question">
+    Type your question and press Enter:
+    
+    ```
+    Pregunta: ¿Cuándo se fundó el Real Madrid?
+    ```
+  </Step>
+  
+  <Step title="View the Response">
+    The system will:
+    1. Search the index for relevant documents
+    2. Generate an answer using Azure OpenAI
+    3. Display the answer with source attribution
+    
+    ```
+    Respuesta:
+    El Real Madrid se fundó el 6 de marzo de 1902 como Madrid Football Club.
+    
+    Fuentes recuperadas:
+    - [Historia del Real Madrid] score=0.892
+    - [Fundación y primeros años] score=0.756
+    ```
+  </Step>
+  
+  <Step title="Continue or Exit">
+    - Ask another question, or
+    - Press Enter on an empty line to exit
+  </Step>
+</Steps>
+
+### MCP Server
+
+The Model Context Protocol server runs as an HTTP service:
+
+```bash
+cd workspace/source/RealMadrid.MCPServer/RealMadrid.MCPServer
+dotnet run
+```
+
+By default, it listens on `http://+:8080`. You can customize this:
+
+```bash
+export ASPNETCORE_URLS="http://localhost:5000"
+dotnet run
+```
+
+## Verifying Configuration
+
+The system validates configuration on startup. If any required settings are missing, you'll see:
+
+```
+Configuración incompleta. Revisa appsettings.json o variables de entorno:
+- AzureOpenAI.Endpoint es requerido.
+- AzureAISearch.ApiKey es requerido.
+```
+
+This validation happens in `Config/AzureOptions.cs:9-44` using the `Validate()` method.
+
+## API Usage (Programmatic)
+
+You can integrate the RAG system into your own applications:
+
+```csharp
+using RagConsole.Config;
+using RagConsole.Orchestration;
+using RagConsole.Services;
+
+// Load configuration
+var options = AzureOptionsLoader.Load();
+var validationErrors = options.Validate();
+
+if (validationErrors.Count > 0)
+{
+    throw new InvalidOperationException(
+        $"Configuration invalid: {string.Join(", ", validationErrors)}");
+}
+
+// Initialize services
+using var httpClient = new HttpClient();
+var searchService = new AzureSearchService(options);
+var openAiService = new AzureOpenAiService(httpClient, options);
+var orchestrator = new RagOrchestrator(searchService, openAiService);
+
+// Ask a question
+var response = await orchestrator.AskAsync("¿Quién es el máximo goleador?");
+
+Console.WriteLine($"Answer: {response.Answer}");
+Console.WriteLine($"Sources: {response.Sources.Count}");
+
+foreach (var source in response.Sources)
+{
+    Console.WriteLine($"  - {source.Source} (score: {source.Score:F3})");
+}
+```
+
+### Request/Response Models
+
+```csharp
+// Input - from Models/RagRequest.cs:3
+public sealed record RagRequest(string Question);
+
+// Output - from Models/RagResponse.cs:3-5
+public sealed record RagSource(
+    string Id,       // Document identifier
+    string Source,   // Source name/title
+    string Content,  // Retrieved text chunk
+    double Score     // Relevance score (0.0-1.0)
+);
+
+public sealed record RagResponse(
+    string Answer,                     // Generated answer
+    IReadOnlyList<RagSource> Sources   // Retrieved documents
+);
+```
+
+## Troubleshooting
 
 <AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+  <Accordion title="Configuration errors on startup">
+    **Problem**: `AzureOpenAI.Endpoint es requerido`
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
+    **Solution**: Ensure all required settings are provided in `appsettings.json` or as environment variables. The system checks for placeholder values like `<tu-openai>` and treats them as missing.
+    
+    See `Config/AzureOptions.cs:46-49` for validation logic.
   </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+  
+  <Accordion title="HTTP 401 Unauthorized">
+    **Problem**: `Azure OpenAI devolvió 401`
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
+    **Solution**: Verify your API keys are correct and not expired. Check that you're using the right endpoint for your Azure region.
+  </Accordion>
+  
+  <Accordion title="No results from search">
+    **Problem**: `Fuentes recuperadas:` is empty
+    
+    **Solution**: 
+    - Verify the index name is correct
+    - Check that documents exist in your Azure AI Search index
+    - Try a simpler, more general query
+    - Increase the `Top` parameter in settings
+  </Accordion>
+  
+  <Accordion title="Empty or generic responses">
+    **Problem**: Answers don't match the retrieved context
+    
+    **Solution**: 
+    - Adjust the `SystemPrompt` to be more specific
+    - Lower the `Temperature` value (closer to 0.0)
+    - Check that retrieved sources contain relevant information
   </Accordion>
 </AccordionGroup>
 
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
+## Next Steps
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Architecture Deep Dive" icon="diagram-project" href="/architecture">
+    Understand how the RAG pipeline works internally
+  </Card>
+  <Card title="Introduction" icon="book" href="/introduction">
+    Learn more about RAG and system capabilities
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

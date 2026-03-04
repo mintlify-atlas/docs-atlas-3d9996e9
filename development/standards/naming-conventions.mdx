@@ -1,0 +1,40 @@
+---
+title: Naming Conventions
+description: Standard naming conventions for classes, methods, variables, and files in the Real Madrid RAG project
+---
+
+## Convenciones generales
+
+<Info>
+Seguir estas convenciones de nomenclatura garantiza la consistencia y legibilidad del código en todo el proyecto.
+</Info>
+
+- **PascalCase**: clases, interfaces, métodos y propiedades.
+- **camelCase**: campos privados y variables locales.
+- Prefijo **`I`** para interfaces (ejemplo: `IPlayerRepository`).
+- Sufijos obligatorios según responsabilidad: `Service`, `Repository`, `Controller`, `Handler`, `Command`, `Query`.
+- Los nombres de archivo deben coincidir con el nombre de la clase principal.
+- Los namespaces deben reflejar la estructura de carpetas.
+
+## Tabla de referencia
+
+<Note>
+Usa esta tabla como referencia rápida al crear nuevos componentes.
+</Note>
+
+| Concepto | Convención | Ejemplo |
+|---|---|---|
+| Clase | PascalCase | `PlayerService` |
+| Interfaz | PascalCase + prefijo `I` | `IPlayerRepository` |
+| Método | PascalCase | `GetPlayerByIdAsync` |
+| Propiedad | PascalCase | `PlayerName` |
+| Campo privado | camelCase | `playerRepository` |
+| Variable local | camelCase | `playerCount` |
+| Controlador | Sufijo `Controller` | `PlayersController` |
+| Handler CQRS | Sufijo `Handler` | `GetPlayerByIdQueryHandler` |
+| Comando CQRS | Sufijo `Command` | `CreatePlayerCommand` |
+| Query CQRS | Sufijo `Query` | `GetPlayerByIdQuery` |
+| Repositorio | Sufijo `Repository` | `PlayerRepository` |
+| Servicio | Sufijo `Service` | `PlayerStatsService` |
+| Namespace | Igual a carpetas | `RealMadridRag.Application.Features.Players.Queries` |
+| Archivo | Igual a clase principal | `PlayerService.cs` |

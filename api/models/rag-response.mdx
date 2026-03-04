@@ -1,0 +1,82 @@
+---
+title: 'RagResponse'
+description: 'Represents the complete response from the RAG system, including the generated answer and source documents'
+---
+
+## Overview
+
+The `RagResponse` model contains the complete output from the RAG pipeline, including both the AI-generated answer and the source documents that were retrieved from Azure AI Search and used to generate that answer.
+
+## Definition
+
+```csharp
+public sealed record RagResponse(string Answer, IReadOnlyList<RagSource> Sources);
+```
+
+**Namespace:** `RagConsole.Models`
+
+**Source:** `/workspace/source/src/RagConsole/Models/RagResponse.cs:5`
+
+## Properties
+
+<ResponseField name="Answer" type="string" required>
+  The AI-generated answer to the user's question. This answer is produced by Azure OpenAI based on the context provided by the retrieved source documents and the system prompt.
+</ResponseField>
+
+<ResponseField name="Sources" type="IReadOnlyList<RagSource>" required>
+  A read-only list of source documents that were retrieved from Azure AI Search and used to generate the answer. Each source includes metadata like content, source name, ID, and relevance score.
+  
+  See [RagSource](/api/models/rag-source) for details on the source document structure.
+</ResponseField>
+
+<Note>
+  `RagResponse` is implemented as a C# record type, ensuring immutability and providing value-based equality.
+</Note>
+
+## Usage Example
+
+The following example shows how `RagResponse` is created and used:
+
+```csharp
+// Creating a RagResponse in the orchestrator (RagOrchestrator.cs:25)
+public async Task<RagResponse> AskAsync(string question, CancellationToken cancellationToken = default)
+{
+    var request = new RagRequest(question);
+    var sources = await azureSearchService.SearchAsync(request.Question, cancellationToken);
+    var answer = await azureOpenAiService.GenerateAnswerAsync(request.Question, sources, options.SystemPrompt, cancellationToken);
+    return new RagResponse(answer, sources);
+}
+```
+
+## Console Output Example
+
+The console application displays the response to users:
+
+```csharp
+// From Program.cs:38-48
+var response = await orchestrator.AskAsync(question);
+Console.WriteLine("\nRespuesta:");
+Console.WriteLine(response.Answer);
+
+if (response.Sources.Count > 0)
+{
+    Console.WriteLine("\nFuentes recuperadas:");
+    foreach (var source in response.Sources)
+    {
+        Console.WriteLine($"- [{source.Source}] score={source.Score:0.000}");
+    }
+}
+```
+
+## Response Flow
+
+1. User submits a question via [RagRequest](/api/models/rag-request)
+2. Azure AI Search retrieves relevant documents as [RagSource](/api/models/rag-source) objects
+3. Azure OpenAI generates an answer based on the sources
+4. Both answer and sources are combined into a `RagResponse`
+5. The response is returned to the user
+
+## Related Models
+
+- [RagRequest](/api/models/rag-request) - The input model containing the user's question
+- [RagSource](/api/models/rag-source) - Individual source documents in the `Sources` list

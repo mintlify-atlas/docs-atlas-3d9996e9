@@ -1,0 +1,26 @@
+---
+title: API Design Guidelines
+description: REST API design standards and best practices for the Real Madrid RAG project
+---
+
+## Estándares REST obligatorios
+
+<Warning>
+Estos estándares garantizan una API consistente, predecible y fácil de usar. Son obligatorios para todos los endpoints.
+</Warning>
+
+- Usar versionado en URL con formato: `/api/v1/recurso`.
+- Aplicar verbos HTTP por intención:
+  - `GET`: lectura.
+  - `POST`: creación.
+  - `PUT`: reemplazo completo.
+  - `PATCH`: actualización parcial.
+  - `DELETE`: eliminación.
+- Responder errores siempre con **`ProblemDetails`** (RFC 7807).
+- Usar **DTOs** separados de entidades de dominio; no exponer entidades de EF directamente.
+- Implementar paginación con query params `page` y `pageSize`; devolver total en header `X-Total-Count`.
+- Validar autenticación **Bearer token** en middleware/pipeline de autenticación, no en controllers.
+
+<Note>
+La separación entre DTOs y entidades de dominio es crucial para mantener la flexibilidad del API sin acoplar la estructura interna del dominio a contratos externos.
+</Note>

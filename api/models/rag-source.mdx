@@ -1,0 +1,108 @@
+---
+title: 'RagSource'
+description: 'Represents a source document retrieved from Azure AI Search with relevance metadata'
+---
+
+## Overview
+
+The `RagSource` model represents an individual document retrieved from Azure AI Search. It contains the document's content, metadata about its source, a unique identifier, and a relevance score indicating how well it matches the user's query.
+
+## Definition
+
+```csharp
+public sealed record RagSource(string Id, string Source, string Content, double Score);
+```
+
+**Namespace:** `RagConsole.Models`
+
+**Source:** `/workspace/source/src/RagConsole/Models/RagResponse.cs:3`
+
+## Properties
+
+<ResponseField name="Id" type="string" required>
+  A unique identifier for the source document. This is extracted from the search index fields (attempts: `id`, `chunk_id`, `key`). If no ID field is found, a new GUID is generated.
+</ResponseField>
+
+<ResponseField name="Source" type="string" required>
+  The name or identifier of the source document. This is extracted from the search index fields (attempts: `source`, `title`, `file`, `url`). Defaults to "desconocido" (unknown) if not found.
+  
+  Examples: document title, file name, or URL.
+</ResponseField>
+
+<ResponseField name="Content" type="string" required>
+  The actual text content of the document chunk. This is the text that will be used as context for generating the AI answer. Extracted from search index fields (attempts: `content`, `chunk`, `text`, `page_content`).
+</ResponseField>
+
+<ResponseField name="Score" type="double" required>
+  The relevance score from Azure AI Search indicating how well this document matches the user's query. Higher scores indicate better matches. Defaults to `0.0` if not provided by the search service.
+</ResponseField>
+
+<Note>
+  `RagSource` uses a flexible field mapping strategy to work with different Azure AI Search index schemas. The service attempts multiple field names to ensure compatibility.
+</Note>
+
+## Field Mapping
+
+When retrieving documents from Azure AI Search, the system attempts to map fields in the following priority order:
+
+- **Id**: `id` → `chunk_id` → `key` → (generated GUID)
+- **Source**: `source` → `title` → `file` → `url` → `"desconocido"`
+- **Content**: `content` → `chunk` → `text` → `page_content` → `string.Empty`
+- **Score**: Azure Search relevance score → `0.0`
+
+## Usage Example
+
+The following example shows how `RagSource` objects are created from Azure AI Search results:
+
+```csharp
+// From AzureSearchService.cs:33-43
+await foreach (var item in response.Value.GetResultsAsync())
+{
+    var id = GetFirstString(item.Document, "id", "chunk_id", "key") ?? Guid.NewGuid().ToString("N");
+    var content = GetFirstString(item.Document, "content", "chunk", "text", "page_content") ?? string.Empty;
+    var source = GetFirstString(item.Document, "source", "title", "file", "url") ?? "desconocido";
+    var score = item.Score ?? 0d;
+
+    if (!string.IsNullOrWhiteSpace(content))
+    {
+        results.Add(new RagSource(id, source, content, score));
+    }
+}
+```
+
+## Console Display Example
+
+Source documents are displayed to users in the console:
+
+```csharp
+// From Program.cs:42-48
+if (response.Sources.Count > 0)
+{
+    Console.WriteLine("\nFuentes recuperadas:");
+    foreach (var source in response.Sources)
+    {
+        Console.WriteLine($"- [{source.Source}] score={source.Score:0.000}");
+    }
+}
+```
+
+Example output:
+```
+Fuentes recuperadas:
+- [Real Madrid Historia] score=0.856
+- [Plantilla 2024] score=0.742
+- [Estadio Santiago Bernabéu] score=0.691
+```
+
+## Integration with RAG Pipeline
+
+1. User submits a question via [RagRequest](/api/models/rag-request)
+2. Azure AI Search returns matching documents
+3. Each search result is converted to a `RagSource` object
+4. Sources are passed to Azure OpenAI for context
+5. Sources are included in the [RagResponse](/api/models/rag-response) for transparency
+
+## Related Models
+
+- [RagResponse](/api/models/rag-response) - Contains a list of `RagSource` objects
+- [RagRequest](/api/models/rag-request) - The input that triggers source retrieval

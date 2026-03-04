@@ -1,0 +1,57 @@
+---
+title: Architecture Standards
+description: Clean architecture principles and project structure guidelines for the Real Madrid RAG project
+---
+
+## 1. Estructura del proyecto (Clean Architecture)
+
+<Info>
+Este proyecto sigue los principios de Clean Architecture para mantener una separación clara de responsabilidades y facilitar la mantenibilidad del código.
+</Info>
+
+- **Domain**: entidades, value objects, contratos (interfaces) y reglas de negocio puras.
+- **Application**: casos de uso, comandos/queries, validaciones y orquestación de negocio.
+- **Infrastructure**: implementaciones técnicas (persistencia, servicios externos, adapters).
+- **API**: endpoints HTTP, configuración de DI, middleware y aspectos de transporte.
+- Las dependencias deben apuntar hacia adentro: `API -> Application -> Domain` e `Infrastructure -> Application/Domain`.
+
+## 2. Reglas obligatorias
+
+<Warning>
+Estas reglas son obligatorias y deben seguirse en todo el código del proyecto.
+</Warning>
+
+- No colocar lógica de negocio en controllers; los controllers solo delegan al caso de uso.
+- Usar `async/await` en toda operación I/O y en la cadena de llamadas asociada.
+- Aplicar patrón Repository con la **interfaz en Domain** y la implementación en Infrastructure.
+- Implementar CQRS con MediatR para separar comandos (escritura) y queries (lectura).
+- En Application, usar patrón `Result<T>` para flujos esperados y evitar excepciones como control de flujo.
+
+## 3. Ejemplo de estructura de carpetas
+
+<Note>
+Esta estructura refleja la separación de capas de Clean Architecture y debe mantenerse consistente en todo el proyecto.
+</Note>
+
+```text
+src/
+  RealMadridRag.Domain/
+    Entities/
+    ValueObjects/
+    Repositories/
+  RealMadridRag.Application/
+    Features/
+      Players/
+        Commands/
+        Queries/
+    Common/
+      Results/
+  RealMadridRag.Infrastructure/
+    Persistence/
+      Repositories/
+    ExternalServices/
+  RealMadridRag.API/
+    Controllers/
+    Middleware/
+    Extensions/
+```

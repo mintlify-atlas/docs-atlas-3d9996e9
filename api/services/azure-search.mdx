@@ -1,0 +1,217 @@
+---
+title: AzureSearchService
+description: Service for retrieving relevant documents from Azure AI Search using semantic search capabilities
+---
+
+## Overview
+
+The `AzureSearchService` class provides document retrieval functionality using Azure AI Search. It handles search queries and returns ranked results based on relevance scores.
+
+**Namespace:** `RagConsole.Services`
+
+**Interface:** `IAzureSearchService`
+
+**Source:** `src/RagConsole/Services/AzureSearchService.cs`
+
+## Constructor
+
+```csharp
+public AzureSearchService(AzureOptions options)
+```
+
+Initializes a new instance of the `AzureSearchService` class.
+
+<ParamField path="options" type="AzureOptions" required>
+  Configuration options containing Azure AI Search endpoint, API key, and index name
+</ParamField>
+
+<Note>
+  The service automatically creates a `SearchClient` instance configured with the endpoint, index name, and API key from the provided options.
+</Note>
+
+## Methods
+
+### SearchAsync
+
+Searches the Azure AI Search index for documents relevant to the given question.
+
+```csharp
+public async Task<IReadOnlyList<RagSource>> SearchAsync(
+    string question,
+    CancellationToken cancellationToken = default
+)
+```
+
+<ParamField path="question" type="string" required>
+  The search query (typically a user question)
+</ParamField>
+
+<ParamField path="cancellationToken" type="CancellationToken" default="default">
+  Token to cancel the asynchronous operation
+</ParamField>
+
+**Returns:** `Task<IReadOnlyList<RagSource>>`
+
+A read-only list of search results, each containing document metadata and content.
+
+#### Response Structure
+
+<ResponseField name="RagSource[]" type="IReadOnlyList<RagSource>">
+  List of retrieved documents, ordered by relevance
+</ResponseField>
+
+Each `RagSource` object contains:
+
+<ResponseField name="Id" type="string">
+  Unique identifier for the document chunk. Extracted from fields: `id`, `chunk_id`, or `key`. Falls back to a generated GUID if not found.
+</ResponseField>
+
+<ResponseField name="Source" type="string">
+  Source file or document name. Extracted from fields: `source`, `title`, `file`, or `url`. Defaults to "desconocido" (unknown) if not found.
+</ResponseField>
+
+<ResponseField name="Content" type="string">
+  The actual text content from the document chunk. Extracted from fields: `content`, `chunk`, `text`, or `page_content`.
+</ResponseField>
+
+<ResponseField name="Score" type="double">
+  Relevance score assigned by Azure AI Search (higher is more relevant). Defaults to 0 if not available.
+</ResponseField>
+
+## Field Mapping
+
+The service supports flexible field mapping to accommodate different index schemas:
+
+| Property | Supported Field Names |
+|----------|----------------------|
+| Id | `id`, `chunk_id`, `key` |
+| Content | `content`, `chunk`, `text`, `page_content` |
+| Source | `source`, `title`, `file`, `url` |
+
+<Note>
+  Documents without valid content (null or whitespace) are automatically filtered out from results.
+</Note>
+
+## Configuration
+
+The service uses the following configuration from `AzureOptions`:
+
+- **Endpoint**: Azure AI Search service endpoint URL
+- **ApiKey**: Azure AI Search API key for authentication
+- **IndexName**: Name of the search index to query
+- **Top**: Maximum number of results to return (configured via `options.AzureAISearch.Top`)
+
+## Usage Example
+
+<CodeGroup>
+
+```csharp Basic Usage
+var options = AzureOptionsLoader.Load();
+var searchService = new AzureSearchService(options);
+
+var results = await searchService.SearchAsync(
+    "¿Cuándo ganó el Real Madrid su primera Champions League?"
+);
+
+foreach (var result in results)
+{
+    Console.WriteLine($"Source: {result.Source}");
+    Console.WriteLine($"Score: {result.Score:F2}");
+    Console.WriteLine($"Content: {result.Content}");
+    Console.WriteLine();
+}
+```
+
+```csharp With Cancellation
+using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+try
+{
+    var results = await searchService.SearchAsync(
+        "Historia del Real Madrid",
+        cts.Token
+    );
+    
+    Console.WriteLine($"Found {results.Count} relevant documents");
+}
+catch (OperationCanceledException)
+{
+    Console.WriteLine("Search operation timed out");
+}
+```
+
+```csharp Dependency Injection
+public void ConfigureServices(IServiceCollection services)
+{
+    services.AddSingleton<AzureOptions>(AzureOptionsLoader.Load());
+    services.AddSingleton<IAzureSearchService, AzureSearchService>();
+}
+```
+
+</CodeGroup>
+
+## Search Behavior
+
+### Result Ordering
+
+Results are returned in the order provided by Azure AI Search, typically sorted by relevance score (highest first).
+
+### Result Limiting
+
+The number of results is controlled by the `Top` parameter in the Azure AI Search configuration:
+
+```csharp
+var searchOptions = new SearchOptions
+{
+    Size = options.AzureAISearch.Top
+};
+```
+
+### Empty Results
+
+If no relevant documents are found, the method returns an empty list (not null).
+
+## Internal Implementation
+
+### GetFirstString Helper
+
+The service uses a private helper method to flexibly extract field values:
+
+```csharp
+private static string? GetFirstString(SearchDocument document, params string[] keys)
+```
+
+This method:
+- Tries each field name in order
+- Returns the first non-null, non-whitespace value found
+- Returns `null` if no valid value is found
+
+## Error Handling
+
+<Note>
+  Azure SDK exceptions (authentication failures, network errors, etc.) will propagate to the caller. Implement appropriate error handling in your application.
+</Note>
+
+```csharp Error Handling Example
+try
+{
+    var results = await searchService.SearchAsync(question);
+}
+catch (RequestFailedException ex) when (ex.Status == 401)
+{
+    Console.WriteLine("Authentication failed. Check your API key.");
+}
+catch (RequestFailedException ex) when (ex.Status == 404)
+{
+    Console.WriteLine("Index not found. Check your index name.");
+}
+catch (RequestFailedException ex)
+{
+    Console.WriteLine($"Azure Search error: {ex.Message}");
+}
+```
+
+## Related Services
+
+- [AzureOpenAiService](/api/services/azure-openai) - Uses search results to generate answers
+- [RagOrchestrator](/api/services/rag-orchestrator) - Coordinates search and generation
