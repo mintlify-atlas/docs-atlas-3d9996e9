@@ -1,0 +1,104 @@
+{
+  "projectType": "ai-ml",
+  "projectName": "Real Madrid RAG",
+  "projectDescription": "RAG system for Real Madrid knowledge base using Azure AI Search and OpenAI with MCP server integration",
+  "theme": "palm",
+  "primaryColor": "#FEBE10",
+  "lightColor": "#FFD700",
+  "darkColor": "#8B4789",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "architecture"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/rag-fundamentals",
+              "concepts/azure-integration"
+            ]
+          },
+          {
+            "group": "Components",
+            "pages": [
+              "components/console-cli",
+              "components/mcp-server"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/azure-setup",
+              "configuration/environment"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Services",
+            "pages": [
+              "api/services/rag-orchestrator",
+              "api/services/azure-search",
+              "api/services/azure-openai"
+            ]
+          },
+          {
+            "group": "Models",
+            "pages": [
+              "api/models/rag-request",
+              "api/models/rag-response",
+              "api/models/rag-source"
+            ]
+          },
+          {
+            "group": "MCP Tools",
+            "pages": [
+              "api/mcp/coding-standards-tools"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Development",
+        "groups": [
+          {
+            "group": "Coding Standards",
+            "pages": [
+              "development/standards/architecture",
+              "development/standards/naming-conventions",
+              "development/standards/error-handling",
+              "development/standards/api-design"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "RAG-powered question answering system",
+    "Azure AI Search semantic search integration",
+    "Azure OpenAI GPT-based answer generation",
+    "MCP server for coding standards access",
+    "Console CLI for interactive queries",
+    "Configurable prompt templates and search parameters"
+  ],
+  "publicApiSurface": [
+    "RagOrchestrator.AskAsync",
+    "AzureSearchService.SearchAsync",
+    "AzureOpenAiService.GenerateAnswerAsync",
+    "CodingStandardsTools.GetCodingStandard",
+    "CodingStandardsTools.ListAvailableStandards",
+    "CodingStandardsTools.SearchInStandards"
+  ]
+}
